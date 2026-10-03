@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +13,7 @@ from agent_manager.models import (
 )
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.webhooks import router as webhooks_router
+from agent_manager.poller import LocalGitWatcher
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,10 +21,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agent_manager.server")
 
+watcher = LocalGitWatcher()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start local Git board watcher
+    watcher.start()
+    yield
+    # Shutdown: Stop watcher
+    watcher.stop()
+
 app = FastAPI(
     title="Agent Manager",
     description="Webhook Dispatcher & Live Control Plane for Google Antigravity Agents",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(
