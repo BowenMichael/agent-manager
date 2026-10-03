@@ -80,11 +80,26 @@
       <aside class="agents-sidebar">
         <div class="sidebar-header">
           <div style="display:flex; align-items:center; gap:8px;">
-            <h2>Active Sessions</h2>
+            <h2 id="sidebar-title">Active Sessions</h2>
             <span class="badge" id="sessions-count">0</span>
           </div>
           <button class="btn-icon" id="btn-sync-board" title="Sync with GitHub Project Board">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+          </button>
+        </div>
+
+        <div class="sidebar-filters">
+          <button class="filter-tab active" id="tab-filter-active" data-filter="active">
+            Active
+            <span class="filter-count" id="count-filter-active">0</span>
+          </button>
+          <button class="filter-tab" id="tab-filter-archived" data-filter="archived">
+            Archived
+            <span class="filter-count" id="count-filter-archived">0</span>
+          </button>
+          <button class="filter-tab" id="tab-filter-all" data-filter="all">
+            All
+            <span class="filter-count" id="count-filter-all">0</span>
           </button>
         </div>
 
@@ -139,6 +154,7 @@
             <div class="session-meta">
               <div class="session-title-row">
                 <span class="status-tag tag-running" id="current-status-tag">RUNNING</span>
+                <span class="archived-tag hidden" id="current-archived-tag">ARCHIVED</span>
                 <h2 id="current-title">Issue #6: Historical Calendar UI</h2>
               </div>
               <div class="session-submeta">
@@ -166,6 +182,14 @@
               <button class="btn btn-secondary" id="btn-restart-current" title="Refresh & Restart this agent">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                 Restart Agent
+              </button>
+              <button class="btn btn-secondary" id="btn-archive-current" title="Archive agent to remove from active list">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+                Archive Agent
+              </button>
+              <button class="btn btn-secondary hidden" id="btn-unarchive-current" title="Restore agent from archive to active list">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                Unarchive
               </button>
               <button class="btn btn-success" id="btn-done-current" title="Mark this issue as Done on Project Board and archive chat session">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>

@@ -170,8 +170,29 @@ async def update_settings(req: SettingsUpdateRequest):
     return result
 
 @app.get("/api/agents", response_model=list[AgentSessionInfo])
-async def list_agents():
-    return runner.list_sessions()
+async def list_agents(include_archived: bool = True):
+    return runner.list_sessions(include_archived=include_archived)
+
+@app.post("/api/agents/{session_id}/archive")
+async def archive_agent(session_id: str):
+    success = await runner.archive_agent(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": f"Agent {session_id} archived"}
+
+@app.post("/api/agents/{session_id}/unarchive")
+async def unarchive_agent(session_id: str):
+    success = await runner.unarchive_agent(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": f"Agent {session_id} unarchived"}
+
+@app.delete("/api/agents/{session_id}")
+async def delete_agent(session_id: str):
+    success = await runner.delete_agent(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": f"Agent {session_id} deleted"}
 
 @app.get("/api/agents/{session_id}", response_model=AgentSessionInfo)
 async def get_agent(session_id: str):

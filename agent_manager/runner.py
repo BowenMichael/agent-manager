@@ -81,8 +81,10 @@ class AgentRunnerManager:
         for dead in stale:
             self.unregister_ws(dead)
 
-    def list_sessions(self) -> List[AgentSessionInfo]:
-        return list(self.sessions.values())
+    def list_sessions(self, include_archived: bool = True) -> List[AgentSessionInfo]:
+        if include_archived:
+            return list(self.sessions.values())
+        return [s for s in self.sessions.values() if not s.is_archived]
 
     def get_session(self, session_id: str) -> Optional[AgentSessionInfo]:
         return self.sessions.get(session_id)
@@ -281,6 +283,86 @@ class AgentRunnerManager:
         self._save()
         await self.broadcast("session_updated", session.model_dump())
         logger.info(f"Agent {session_id} completed: {reason}")
+        return True
+
+    async def archive_agent(self, session_id: str) -> bool:
+        """Archives an agent session to remove it from the primary active list."""
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+
+        # Stop active subprocess if running
+        proc = self._active_agents.get(session_id)
+        if proc and hasattr(proc, 'terminate'):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            self._active_agents.pop(session_id, None)
+
+        task = self._tasks.get(session_id)
+        if task and not task.done():
+            task.cancel()
+
+        session.is_archived = True
+        from datetime import datetime
+        session.archived_at = datetime.utcnow().isoformat()
+        if session.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING]:
+            session.status = AgentStatus.STOPPED
+
+        archive_msg = ConversationMessage(
+            id=str(uuid.uuid4()),
+            role=MessageRole.SYSTEM,
+            content="📦 [Agent Archived] This agent session has been archived."
+        )
+        session.messages.append(archive_msg)
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+        logger.info(f"Agent {session_id} archived.")
+        return True
+
+    async def unarchive_agent(self, session_id: str) -> bool:
+        """Restores an archived agent session back to the active list."""
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+
+        session.is_archived = False
+        session.archived_at = None
+        unarchive_msg = ConversationMessage(
+            id=str(uuid.uuid4()),
+            role=MessageRole.SYSTEM,
+            content="📂 [Agent Restored] This agent session has been restored from archive."
+        )
+        session.messages.append(unarchive_msg)
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+        logger.info(f"Agent {session_id} unarchived.")
+        return True
+
+    async def delete_agent(self, session_id: str) -> bool:
+        """Permanently removes an agent session."""
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+
+        proc = self._active_agents.get(session_id)
+        if proc and hasattr(proc, 'terminate'):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            self._active_agents.pop(session_id, None)
+
+        task = self._tasks.get(session_id)
+        if task and not task.done():
+            task.cancel()
+
+        self.sessions.pop(session_id, None)
+        self._context_queues.pop(session_id, None)
+        self._save()
+        await self.broadcast("session_deleted", {"session_id": session_id})
+        logger.info(f"Agent {session_id} deleted permanently.")
         return True
 
     async def add_context(self, session_id: str, context: str) -> bool:

@@ -164,6 +164,8 @@ function connectWebSocket() {
   };
 }
 
+let currentFilter = 'active'; // 'active' | 'archived' | 'all'
+
 function handleWsMessage(msg) {
   switch (msg.type) {
     case 'init':
@@ -171,7 +173,12 @@ function handleWsMessage(msg) {
       renderSessionsList();
       updateStats();
       if (sessions.length > 0 && !activeSessionId) {
-        selectSession(sessions[0].session_id);
+        const visible = getFilteredSessions();
+        if (visible.length > 0) {
+          selectSession(visible[0].session_id);
+        } else {
+          selectSession(sessions[0].session_id);
+        }
       }
       break;
 
@@ -196,6 +203,25 @@ function handleWsMessage(msg) {
       if (activeSessionId === msg.data.session_id) {
         updateActiveSessionView(msg.data);
       }
+      break;
+
+    case 'session_deleted':
+      const deletedIdx = sessions.findIndex(s => s.session_id === msg.data.session_id);
+      if (deletedIdx !== -1) {
+        sessions.splice(deletedIdx, 1);
+      }
+      if (activeSessionId === msg.data.session_id) {
+        activeSessionId = null;
+        const visible = getFilteredSessions();
+        if (visible.length > 0) {
+          selectSession(visible[0].session_id);
+        } else {
+          consoleActive.classList.add('hidden');
+          consoleEmpty.classList.remove('hidden');
+        }
+      }
+      renderSessionsList();
+      updateStats();
       break;
 
     case 'message_added':
@@ -245,39 +271,79 @@ function handleTokenStream(token) {
   contentEl.textContent += token;
 }
 
+function getFilteredSessions() {
+  if (currentFilter === 'active') {
+    return sessions.filter(s => !s.is_archived);
+  } else if (currentFilter === 'archived') {
+    return sessions.filter(s => !!s.is_archived);
+  }
+  return sessions;
+}
+
 function updateStats() {
-  const activeCount = sessions.filter(s => s.status === 'RUNNING' || s.status === 'INITIALIZING').length;
+  const activeCount = sessions.filter(s => !s.is_archived && (s.status === 'RUNNING' || s.status === 'INITIALIZING')).length;
   const compCount = sessions.filter(s => s.status === 'COMPLETED').length;
   const totalTokens = sessions.reduce((acc, s) => acc + (s.token_count || 0), 0);
 
   statActive.textContent = activeCount;
   statCompleted.textContent = compCount;
   statTokens.textContent = totalTokens;
-  sessionsCount.textContent = sessions.length;
+
+  // Filter badge counts
+  const totalActive = sessions.filter(s => !s.is_archived).length;
+  const totalArchived = sessions.filter(s => !!s.is_archived).length;
+  const countActiveEl = document.getElementById('count-filter-active');
+  const countArchivedEl = document.getElementById('count-filter-archived');
+  const countAllEl = document.getElementById('count-filter-all');
+  if (countActiveEl) countActiveEl.textContent = totalActive;
+  if (countArchivedEl) countArchivedEl.textContent = totalArchived;
+  if (countAllEl) countAllEl.textContent = sessions.length;
+
+  const filtered = getFilteredSessions();
+  sessionsCount.textContent = filtered.length;
 }
 
 function renderSessionsList() {
-  if (sessions.length === 0) {
-    sessionsEmpty.classList.remove('hidden');
-    return;
-  }
-  sessionsEmpty.classList.add('hidden');
+  const filtered = getFilteredSessions();
 
-  // Preserve scroll
+  if (filtered.length === 0) {
+    sessionsEmpty.classList.remove('hidden');
+    const emptyP = sessionsEmpty.querySelector('p');
+    if (emptyP) {
+      if (currentFilter === 'archived') {
+        emptyP.textContent = 'No archived agents.';
+      } else if (currentFilter === 'active') {
+        emptyP.textContent = 'No active agents.';
+      } else {
+        emptyP.textContent = 'No agents recorded yet.';
+      }
+    }
+  } else {
+    sessionsEmpty.classList.add('hidden');
+  }
+
+  // Preserve scroll & remove old cards
   const existingCards = sessionsList.querySelectorAll('.session-card');
   existingCards.forEach(c => c.remove());
 
-  sessions.forEach(session => {
+  filtered.forEach(session => {
     const card = document.createElement('div');
-    card.className = `session-card ${session.session_id === activeSessionId ? 'selected' : ''}`;
+    card.className = `session-card ${session.session_id === activeSessionId ? 'selected' : ''} ${session.is_archived ? 'card-archived' : ''}`;
     card.dataset.id = session.session_id;
 
-    const statusBadgeClass = getStatusBadgeClass(session.status);
+    const statusBadgeClass = session.is_archived ? 'badge-archived' : getStatusBadgeClass(session.status);
+    const badgeText = session.is_archived ? '📦 ARCHIVED' : (session.quota_exceeded ? '🚫 QUOTA' : session.status);
 
     card.innerHTML = `
       <div class="card-top">
-        <span class="card-status-badge ${session.quota_exceeded ? 'badge-quota' : statusBadgeClass}">${session.quota_exceeded ? '🚫 QUOTA' : session.status}</span>
-        <span class="card-time">${formatTime(session.started_at)}</span>
+        <span class="card-status-badge ${session.quota_exceeded && !session.is_archived ? 'badge-quota' : statusBadgeClass}">${badgeText}</span>
+        <div class="session-card-actions">
+          <span class="card-time">${formatTime(session.started_at)}</span>
+          ${session.is_archived 
+            ? `<button class="card-action-btn btn-quick-unarchive" title="Restore agent" data-id="${session.session_id}">📂</button>`
+            : `<button class="card-action-btn btn-quick-archive" title="Archive agent" data-id="${session.session_id}">📦</button>`
+          }
+        </div>
       </div>
       <div class="card-title">${escapeHtml(session.title)}</div>
       <div class="card-bottom">
@@ -285,6 +351,22 @@ function renderSessionsList() {
         <span>${session.turn_count || 0} turns • ${session.token_count || 0} tok</span>
       </div>
     `;
+
+    // Quick action buttons inside card
+    const quickArchiveBtn = card.querySelector('.btn-quick-archive');
+    if (quickArchiveBtn) {
+      quickArchiveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        archiveAgent(session.session_id);
+      });
+    }
+    const quickUnarchiveBtn = card.querySelector('.btn-quick-unarchive');
+    if (quickUnarchiveBtn) {
+      quickUnarchiveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        unarchiveAgent(session.session_id);
+      });
+    }
 
     card.addEventListener('click', () => selectSession(session.session_id));
     sessionsList.appendChild(card);
@@ -338,6 +420,28 @@ function updateActiveSessionView(session) {
 
   currentStatusTag.textContent = session.status;
   currentStatusTag.className = `status-tag ${getStatusBadgeClass(session.status).replace('badge-', 'tag-')}`;
+
+  const currentArchivedTag = document.getElementById('current-archived-tag');
+  if (currentArchivedTag) {
+    if (session.is_archived) {
+      currentArchivedTag.classList.remove('hidden');
+    } else {
+      currentArchivedTag.classList.add('hidden');
+    }
+  }
+
+  const btnArchiveCurrent = document.getElementById('btn-archive-current');
+  const btnUnarchiveCurrent = document.getElementById('btn-unarchive-current');
+  if (btnArchiveCurrent && btnUnarchiveCurrent) {
+    if (session.is_archived) {
+      btnArchiveCurrent.classList.add('hidden');
+      btnUnarchiveCurrent.classList.remove('hidden');
+    } else {
+      btnArchiveCurrent.classList.remove('hidden');
+      btnUnarchiveCurrent.classList.add('hidden');
+    }
+  }
+
   currentTitle.textContent = session.title;
   currentRepo.textContent = session.repo;
   currentBranch.textContent = session.git_branch || 'main';
@@ -349,7 +453,7 @@ function updateActiveSessionView(session) {
   if (currentModelTag) currentModelTag.textContent = session.model || 'gemini-3.8-flash';
   if (currentEffortTag) currentEffortTag.textContent = `effort: ${session.effort || 'high'}`;
 
-  btnStopCurrent.disabled = (session.status === 'STOPPED' || session.status === 'COMPLETED' || session.status === 'FAILED');
+  btnStopCurrent.disabled = (session.status === 'STOPPED' || session.status === 'COMPLETED' || session.status === 'FAILED' || session.is_archived);
   updateOverviewPanel(session);
 }
 
@@ -1112,5 +1216,90 @@ if (btnDoneCurrent) {
       btnDoneCurrent.disabled = false;
       btnDoneCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Mark Done`;
     }
+  });
+}
+
+// Archive & Unarchive API actions
+async function archiveAgent(sessionId) {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(`/api/agents/${sessionId}/archive`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to archive agent');
+    }
+    const s = sessions.find(item => item.session_id === sessionId);
+    if (s) {
+      s.is_archived = true;
+      if (s.status === 'RUNNING' || s.status === 'INITIALIZING') s.status = 'STOPPED';
+    }
+    renderSessionsList();
+    updateStats();
+    if (activeSessionId === sessionId) {
+      updateActiveSessionView(s);
+    }
+    showToast('Agent session archived successfully.');
+  } catch (err) {
+    alert('Error archiving agent: ' + err.message);
+  }
+}
+
+async function unarchiveAgent(sessionId) {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(`/api/agents/${sessionId}/unarchive`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to unarchive agent');
+    }
+    const s = sessions.find(item => item.session_id === sessionId);
+    if (s) {
+      s.is_archived = false;
+      s.archived_at = null;
+    }
+    renderSessionsList();
+    updateStats();
+    if (activeSessionId === sessionId) {
+      updateActiveSessionView(s);
+    }
+    showToast('Agent session restored to active list.');
+  } catch (err) {
+    alert('Error unarchiving agent: ' + err.message);
+  }
+}
+
+// Filter Tab Click Handlers
+const filterTabs = document.querySelectorAll('.filter-tab');
+filterTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    filterTabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentFilter = tab.dataset.filter || 'active';
+    const sidebarTitle = document.getElementById('sidebar-title');
+    if (sidebarTitle) {
+      if (currentFilter === 'archived') sidebarTitle.textContent = 'Archived Sessions';
+      else if (currentFilter === 'all') sidebarTitle.textContent = 'All Sessions';
+      else sidebarTitle.textContent = 'Active Sessions';
+    }
+    renderSessionsList();
+    updateStats();
+  });
+});
+
+// Session Controls: Archive & Unarchive Buttons
+const btnArchiveCurrent = document.getElementById('btn-archive-current');
+if (btnArchiveCurrent) {
+  btnArchiveCurrent.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    if (!confirm('Archive this agent session? It will be hidden from the active list.')) return;
+    await archiveAgent(activeSessionId);
+  });
+}
+
+const btnUnarchiveCurrent = document.getElementById('btn-unarchive-current');
+if (btnUnarchiveCurrent) {
+  btnUnarchiveCurrent.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    await unarchiveAgent(activeSessionId);
   });
 }
