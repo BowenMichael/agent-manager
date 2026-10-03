@@ -62,6 +62,7 @@ class SettingsUpdateRequest(BaseModel):
     default_repo: Optional[str] = None
     agy_mode: Optional[str] = None
     default_model: Optional[str] = None
+    effort_level: Optional[str] = None
     max_session_tokens: Optional[int] = None
 
 @app.get("/api/settings")
