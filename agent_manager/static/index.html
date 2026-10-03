@@ -189,6 +189,14 @@
               </div>
 
               
+              <div class="quota-alert-banner hidden" id="quota-alert-banner">
+                <span>🚫</span>
+                <span><strong>Quota limit reached.</strong> <span id="quota-alert-text"></span></span>
+                <div class="quota-actions">
+                  <button id="btn-quota-settings">Switch Model</button>
+                  <button id="btn-quota-resume">Resume</button>
+                </div>
+              </div>
               <div class="agent-activity-bar" id="agent-activity-bar">
                 <div class="activity-info-group">
                   <div class="activity-spinner" id="activity-spinner"></div>
@@ -548,5 +556,6 @@
   </div>
 
   <script src="/static/app.js"></script>
+  <div class="toast-stack" id="toast-stack"></div>
 </body>
 </html>

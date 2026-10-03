@@ -206,7 +206,8 @@ async def restart_agent(session_id: str):
 @app.post("/api/board/sync")
 async def sync_board():
     try:
-        await watcher._check_project_board()
+        for b in config.PROJECT_BOARD_IDS:
+            await watcher._check_project_board(b)
         return {"status": "ok", "message": "Project board synced successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -224,10 +225,9 @@ async def complete_agent(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="Agent session not found")
     
-    from agent_manager.poller import STATUS_OPTIONS
-    if session.issue_number and session.issue_number in watcher.item_id_map:
-        item_id = watcher.item_id_map[session.issue_number]
-        await watcher.update_item_status(item_id, STATUS_OPTIONS["done"])
+    key = f"{session.repo}#{session.issue_number}"
+    if session.issue_number and key in watcher.item_id_map:
+        await watcher.update_item_status(watcher.item_id_map[key], "done")
 
     success = await runner.complete_agent(session_id, reason="Manually marked as Done by user")
     return {"status": "ok", "message": f"Agent {session_id} marked as Done and archived"}
