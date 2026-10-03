@@ -89,6 +89,7 @@ class TestAgentManager(unittest.TestCase):
         self.assertEqual(get_res.json()["status"], AgentStatus.STOPPED.value)
 
     def test_settings_model_effort_and_next_prompt_update(self):
+
         # 1. Update settings with new model, effort, and overage credits
         settings_res = self.client.post("/api/settings", json={
             "default_model": "claude-sonnet-5-5",
@@ -198,5 +199,40 @@ class TestAgentManager(unittest.TestCase):
         get_deleted = self.client.get(f"/api/agents/{session_id}")
         self.assertEqual(get_deleted.status_code, 404)
 
+    def test_persistent_settings_across_instances(self):
+        # Update settings via API
+        update_payload = {
+            "default_model": "claude-sonnet-5-5",
+            "effort_level": "high",
+            "max_session_tokens": 200000,
+            "agy_mode": "web_stream",
+            "default_repo": "BowenMichael/f1-frontend"
+        }
+        res = self.client.post("/api/settings", json=update_payload)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["default_model"], "claude-sonnet-5-5")
+        self.assertEqual(data["max_session_tokens"], 200000)
+        self.assertEqual(data["agy_mode"], "web_stream")
+        self.assertEqual(data["default_repo"], "BowenMichael/f1-frontend")
+
+        # Verify get_settings endpoint returns the updated settings
+        get_res = self.client.get("/api/settings")
+        self.assertEqual(get_res.status_code, 200)
+        settings_data = get_res.json()
+        self.assertEqual(settings_data["default_model"], "claude-sonnet-5-5")
+        self.assertEqual(settings_data["max_session_tokens"], 200000)
+        self.assertEqual(settings_data["default_repo"], "BowenMichael/f1-frontend")
+
+        # Verify persistence from disk directly via load_settings
+        from agent_manager.storage import load_settings
+        disk_settings = load_settings()
+        self.assertEqual(disk_settings.get("default_model"), "claude-sonnet-5-5")
+        self.assertEqual(disk_settings.get("max_session_tokens"), 200000)
+        self.assertEqual(disk_settings.get("default_repo"), "BowenMichael/f1-frontend")
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
