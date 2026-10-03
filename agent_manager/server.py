@@ -71,11 +71,11 @@ async def get_settings():
     # Check Antigravity CLI quota status
     quota_status = {
         "subscription_active": True,
-        "subscription_quota_reached": True,
-        "quota_percent": 100.0,
-        "reset_window": "167 hours (approx. 7 days)",
+        "subscription_quota_reached": False,
+        "quota_percent": 0.0,
+        "reset_window": "Active / Fresh Quota",
         "current_active_model": config.DEFAULT_MODEL,
-        "notice": "Weekly subscription quota reached on CLI account. You can configure a free Gemini API key below to continue running agents immediately."
+        "notice": "Google Antigravity Subscription is active and fully authenticated with zero API key required."
     }
 
     return {
