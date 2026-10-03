@@ -55,9 +55,20 @@ class AgentRunnerManager:
     def _setup_worktree(self, repo: str, issue_number: int) -> tuple[Optional[str], Optional[str]]:
         """Sets up isolated git worktree for the issue to prevent branch conflicts."""
         repo_name = repo.split("/")[-1]
-        repo_dir = WORKSPACE_BASE / repo_name
-        if not repo_dir.exists():
-            logger.warning(f"Repository path {repo_dir} does not exist locally. Falling back to base workspace.")
+        candidate_dirs = [
+            WORKSPACE_BASE / repo_name,
+            WORKSPACE_BASE / "F1 Front End" / repo_name,
+            Path("e:/~Michael Bowen/Projects/F1 Front End/f1-frontend"),
+            Path.cwd()
+        ]
+        repo_dir = None
+        for cand in candidate_dirs:
+            if cand.exists() and (cand / ".git").exists():
+                repo_dir = cand
+                break
+
+        if not repo_dir:
+            logger.warning(f"No git repository found for {repo}. Operating without isolated worktree.")
             return None, None
 
         worktrees_dir = repo_dir / ".worktrees"
@@ -81,7 +92,7 @@ class AgentRunnerManager:
     async def spawn_agent(self, req: SpawnRequest) -> AgentSessionInfo:
         repo = req.repo or DEFAULT_REPO
         issue_number = req.issue_number
-        session_id = f"agent-issue-{issue_number}-{int(time.time())}" if issue_number else f"agent-{uuid.uuid4().hex[:8]}"
+        session_id = f"issue-{issue_number}-{uuid.uuid4().hex}" if issue_number else str(uuid.uuid4())
 
         worktree_path = None
         branch_name = None
@@ -200,7 +211,7 @@ class AgentRunnerManager:
                 system_instructions=system_instructions,
                 capabilities=CapabilitiesConfig(),
                 workspaces=workspaces,
-                conversation_id=session_id
+                conversation_id=str(uuid.uuid4())
             )
 
             logger.info(f"Launching Antigravity Agent for session {session_id}")
