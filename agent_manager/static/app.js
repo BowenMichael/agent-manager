@@ -525,3 +525,51 @@ btnSaveSettings.addEventListener('click', async () => {
 
 // Check on boot
 checkApiKeyStatus();
+
+// Action: Sync Board
+const btnSyncBoard = document.getElementById('btn-sync-board');
+if (btnSyncBoard) {
+  btnSyncBoard.addEventListener('click', async () => {
+    btnSyncBoard.classList.add('spinning');
+    try {
+      await fetch('/api/board/sync', { method: 'POST' });
+      // Fetch fresh sessions
+      const res = await fetch('/api/agents');
+      sessions = await res.json();
+      renderSessionsList();
+      updateStats();
+    } catch (e) {
+      console.error('Board sync error:', e);
+    } finally {
+      setTimeout(() => btnSyncBoard.classList.remove('spinning'), 600);
+    }
+  });
+}
+
+// Action: Restart Current Agent
+const btnRestartCurrent = document.getElementById('btn-restart-current');
+if (btnRestartCurrent) {
+  btnRestartCurrent.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    if (!confirm('Are you sure you want to refresh & restart this agent session?')) return;
+
+    btnRestartCurrent.disabled = true;
+    btnRestartCurrent.innerHTML = `<svg class="spinning" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Restarting...`;
+
+    try {
+      const res = await fetch(`/api/agents/${activeSessionId}/restart`, {
+        method: 'POST'
+      });
+      if (!res.ok) throw new Error('Failed to restart agent');
+      const updated = await res.json();
+      const idx = sessions.findIndex(s => s.session_id === updated.session_id);
+      if (idx !== -1) sessions[idx] = updated;
+      selectSession(updated.session_id);
+    } catch (err) {
+      alert('Error restarting agent: ' + err.message);
+    } finally {
+      btnRestartCurrent.disabled = false;
+      btnRestartCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Restart Agent`;
+    }
+  });
+}

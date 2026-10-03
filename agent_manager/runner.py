@@ -126,6 +126,34 @@ class AgentRunnerManager:
         self._tasks[session_id] = task
         return session
 
+    async def restart_agent(self, session_id: str) -> Optional[AgentSessionInfo]:
+        session = self.sessions.get(session_id)
+        if not session:
+            return None
+
+        # Stop existing process or task
+        await self.stop_agent(session_id, reason="Restarted by user")
+
+        session.status = AgentStatus.INITIALIZING
+        session.error_message = None
+        restart_msg = ConversationMessage(
+            id=str(uuid.uuid4()),
+            role=MessageRole.SYSTEM,
+            content="Agent session was refreshed and restarted."
+        )
+        session.messages.append(restart_msg)
+        await self.broadcast("session_updated", session.model_dump())
+
+        # Reset queue
+        self._context_queues[session_id] = asyncio.Queue()
+
+        # Re-launch agent loop with the original prompt
+        initial_prompt = session.messages[0].content if session.messages else f"Execute task for issue #{session.issue_number}"
+        task = asyncio.create_task(self._run_agent_loop(session_id, initial_prompt, session.worktree_path))
+        self._tasks[session_id] = task
+        logger.info(f"Agent {session_id} restarted successfully.")
+        return session
+
     async def stop_agent(self, session_id: str, reason: str = "Stopped by user") -> bool:
         session = self.sessions.get(session_id)
         if not session:

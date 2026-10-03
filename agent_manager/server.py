@@ -112,6 +112,22 @@ async def get_agent(session_id: str):
 async def spawn_agent(req: SpawnRequest):
     return await runner.spawn_agent(req)
 
+
+@app.post("/api/agents/{session_id}/restart", response_model=AgentSessionInfo)
+async def restart_agent(session_id: str):
+    session = await runner.restart_agent(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return session
+
+@app.post("/api/board/sync")
+async def sync_board():
+    try:
+        await watcher._check_project_board()
+        return {"status": "ok", "message": "Project board synced successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/agents/{session_id}/stop")
 async def stop_agent(session_id: str, req: StopAgentRequest = StopAgentRequest()):
     success = await runner.stop_agent(session_id, req.reason or "Stopped via UI")
