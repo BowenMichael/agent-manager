@@ -8,7 +8,10 @@ from typing import Dict, Optional, Set, Any
 from pathlib import Path
 
 from fastapi import WebSocket
-from agent_manager.config import WORKSPACE_BASE, DEFAULT_REPO, DEFAULT_MODEL, GEMINI_API_KEY
+from agent_manager.config import (
+    WORKSPACE_BASE, DEFAULT_REPO, DEFAULT_MODEL,
+    GITHUB_PERSONAL_ACCESS_TOKEN, GEMINI_API_KEY
+)
 from agent_manager.models import (
     AgentSessionInfo, AgentStatus, MessageRole,
     ConversationMessage, SpawnRequest
@@ -81,7 +84,6 @@ class AgentRunnerManager:
                 cmd = f'git worktree add -B "{branch_name}" "{worktree_path}" origin/main'
                 res = subprocess.run(cmd, cwd=str(repo_dir), shell=True, capture_output=True, text=True)
                 if res.returncode != 0:
-                    # Try from HEAD if origin/main doesn't exist
                     cmd_fallback = f'git worktree add -B "{branch_name}" "{worktree_path}" HEAD'
                     subprocess.run(cmd_fallback, cwd=str(repo_dir), shell=True, capture_output=True, text=True)
             return str(worktree_path), branch_name
@@ -231,118 +233,51 @@ class AgentRunnerManager:
             session.status = AgentStatus.RUNNING
             await self.broadcast("session_updated", session.model_dump())
 
-            from agent_manager.config import ANTIGRAVITY_IDE_CLI, GEMINI_API_KEY, SUBSCRIPTION_MODE
+            # Launch visible interactive terminal worker that starts working immediately!
+            cwd_dir = worktree_path or str(WORKSPACE_BASE)
+            issue_num = session.issue_number or 0
+            branch_name = session.git_branch or f"feat/issue-{issue_num}"
+            project_root = Path(__file__).resolve().parent.parent
 
-            # If no API key is provided or SUBSCRIPTION_MODE is active, leverage existing Antigravity subscription!
-            effective_key = GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
-            if not effective_key and ANTIGRAVITY_IDE_CLI.exists():
-                logger.info(f"Launching Antigravity IDE Agent via active Antigravity subscription for session {session_id}")
-                await self._append_message(
-                    session_id,
-                    MessageRole.SYSTEM,
-                    "Launched dedicated Antigravity Agent window using your active Antigravity subscription (Zero API Key)."
-                )
-
-                cwd_dir = worktree_path or str(WORKSPACE_BASE)
-                cmd = [
-                    str(ANTIGRAVITY_IDE_CLI),
-                    "chat",
-                    "--mode", "agent",
-                    "--new-window",
-                    initial_prompt
-                ]
-                proc = subprocess.Popen(
-                    cmd,
-                    cwd=cwd_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                self._active_agents[session_id] = proc
-
-                # Capture terminal stdout and stderr in real-time
-                stdout_text, stderr_text = proc.communicate(timeout=10)
-                if stdout_text and stdout_text.strip():
-                    await self._append_message(
-                        session_id,
-                        MessageRole.TOOL_RESULT,
-                        f"[AGY Terminal stdout]\n{stdout_text.strip()}",
-                        tool_name="agy_terminal"
-                    )
-                if stderr_text and stderr_text.strip():
-                    await self._append_message(
-                        session_id,
-                        MessageRole.TOOL_RESULT,
-                        f"[AGY Terminal stderr]\n{stderr_text.strip()}",
-                        tool_name="agy_terminal"
-                    )
-
-                await self._append_message(
-                    session_id,
-                    MessageRole.SYSTEM,
-                    f"[AGY Terminal] Process spawned (PID: {proc.pid}) with exit code {proc.returncode}."
-                )
-
-                # Monitor queue for added context
-                queue = self._context_queues[session_id]
-                while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED]:
-                    try:
-                        next_ctx = await asyncio.wait_for(queue.get(), timeout=5.0)
-                        await self._append_message(session_id, MessageRole.USER, next_ctx)
-                        # Feed context via IDE chat command
-                        p = subprocess.Popen(
-                            [str(ANTIGRAVITY_IDE_CLI), "chat", "--mode", "agent", "--reuse-window", next_ctx],
-                            cwd=cwd_dir,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True
-                        )
-                        out, err = p.communicate(timeout=10)
-                        if out and out.strip():
-                            await self._append_message(session_id, MessageRole.TOOL_RESULT, f"[Terminal Context Out] {out.strip()}", tool_name="agy_terminal")
-                    except asyncio.TimeoutError:
-                        pass
-                return
-
-            from google.antigravity import Agent, LocalAgentConfig, CapabilitiesConfig
-
-            workspaces = [worktree_path] if worktree_path else None
-            system_instructions = (
-                "You are an autonomous senior developer agent orchestrated by Agent Manager.\n"
-                "Strict Operational Rules:\n"
-                "1. Always inspect the codebase and run commands inside the assigned workspace.\n"
-                "2. Adhere to AGENTS.md rules: isolate your changes, test your code, and summarize deliverables.\n"
-                "3. Keep responses structured and transparent."
+            logger.info(f"Launching visible terminal worker for session {session_id} on Issue #{issue_num}")
+            await self._append_message(
+                session_id,
+                MessageRole.SYSTEM,
+                f"Launched dedicated interactive terminal for Issue #{issue_num}. Agent started working immediately."
             )
 
-            config = LocalAgentConfig(
-                system_instructions=system_instructions,
-                capabilities=CapabilitiesConfig(),
-                api_key=effective_key,
-                workspaces=workspaces,
-                conversation_id=str(uuid.uuid4())
+            # PowerShell command in visible window
+            worker_cmd = (
+                f'powershell -NoExit -Command '
+                f'"$host.ui.RawUI.WindowTitle = \'AGY Terminal Agent - Issue #{issue_num}\'; '
+                f'python -u -m agent_manager.worker --session-id \'{session_id}\' --issue {issue_num} '
+                f'--repo \'{session.repo}\' --worktree \'{cwd_dir}\' --branch \'{branch_name}\'"'
             )
 
-            logger.info(f"Launching Antigravity Agent via Gemini API for session {session_id}")
-            async with Agent(config) as agent:
-                self._active_agents[session_id] = agent
-                
-                # Turn 1: Process initial prompt
-                await self._execute_chat_turn(agent, session_id, initial_prompt)
+            # Use 'start' to open visible PowerShell terminal window
+            proc = subprocess.Popen(
+                f'start {worker_cmd}',
+                cwd=str(project_root),
+                shell=True
+            )
+            self._active_agents[session_id] = proc
 
-                # Continuous interactive loop for added context
-                queue = self._context_queues[session_id]
-                while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED]:
-                    # Mark idle/paused while waiting for user context
-                    session.status = AgentStatus.PAUSED
-                    await self.broadcast("session_updated", session.model_dump())
+            await self._append_message(
+                session_id,
+                MessageRole.TOOL_RESULT,
+                f"[Terminal Launched] Title: AGY Terminal Agent - Issue #{issue_num}\nStatus: ACTIVELY WORKING IN TERMINAL",
+                tool_name="terminal_launcher"
+            )
 
-                    # Wait for next context injection (or timeout)
-                    next_prompt = await queue.get()
-                    session.status = AgentStatus.RUNNING
-                    await self.broadcast("session_updated", session.model_dump())
-
-                    await self._execute_chat_turn(agent, session_id, next_prompt)
+            # Keep session active and monitor context queue
+            queue = self._context_queues[session_id]
+            while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED, AgentStatus.COMPLETED]:
+                try:
+                    next_ctx = await asyncio.wait_for(queue.get(), timeout=5.0)
+                    await self._append_message(session_id, MessageRole.USER, next_ctx)
+                except asyncio.TimeoutError:
+                    pass
+            return
 
         except asyncio.CancelledError:
             session.status = AgentStatus.STOPPED
@@ -355,37 +290,3 @@ class AgentRunnerManager:
         finally:
             self._active_agents.pop(session_id, None)
             await self.broadcast("session_updated", session.model_dump())
-
-    async def _execute_chat_turn(self, agent: Any, session_id: str, prompt: str):
-        response = await agent.chat(prompt)
-        
-        # Stream thoughts
-        try:
-            async for thought in response.thoughts:
-                await self._append_message(session_id, MessageRole.THOUGHT, thought)
-        except Exception:
-            pass
-
-        # Stream tool calls
-        try:
-            async for call in response.tool_calls:
-                tool_name = getattr(call, "name", "tool")
-                tool_args = getattr(call, "args", {})
-                await self._append_message(
-                    session_id,
-                    MessageRole.TOOL_CALL,
-                    f"Executing {tool_name} with arguments: {tool_args}",
-                    tool_name=tool_name,
-                    tool_args=tool_args if isinstance(tool_args, dict) else {"raw": str(tool_args)}
-                )
-        except Exception:
-            pass
-
-        # Stream text response tokens
-        full_text = ""
-        async for token in response:
-            full_text += token
-            await self._broadcast_token(session_id, token)
-
-        if full_text.strip():
-            await self._append_message(session_id, MessageRole.AGENT, full_text)
