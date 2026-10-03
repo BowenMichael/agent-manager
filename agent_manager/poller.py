@@ -103,10 +103,10 @@ class LocalGitWatcher:
         logger.warning("No Status field found on project %s", project_id)
         return None
 
-    async def update_item_status(self, item_id: str, status_key: str) -> bool:
+    async def update_item_status(self, item_id: str, status_key: str, project_id: Optional[str] = None) -> bool:
         """Updates the status column directly on GitHub Project Board V2 without touching issue tags."""
-        project_id = self.item_project_map.get(item_id, PROJECT_BOARD_ID)
-        board = await self._resolve_board_fields(project_id)
+        pid = project_id or self.item_project_map.get(item_id, PROJECT_BOARD_ID)
+        board = await self._resolve_board_fields(pid)
         if not board or status_key not in board["options"]:
             logger.warning("Cannot resolve status '%s' on project %s", status_key, project_id)
             return False

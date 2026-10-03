@@ -29,6 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agent_manager.server")
 
+from agent_manager.cron_dispatcher import dispatcher
+
 watcher = LocalGitWatcher()
 
 @asynccontextmanager
@@ -36,9 +38,12 @@ async def lifespan(app: FastAPI):
     # Startup: Start local Git board watcher
     watcher.start()
     asyncio.create_task(runner.start_watchdog())
+    # Startup: Start autonomous backlog cron dispatcher (starts in ~23 mins, then every 10 mins)
+    asyncio.create_task(dispatcher.start(initial_delay_seconds=1374, interval_seconds=600))
     yield
-    # Shutdown: Stop watcher
+    # Shutdown: Stop watcher and cron dispatcher
     watcher.stop()
+    dispatcher.stop()
 
 app = FastAPI(
     title="Agent Manager",
@@ -89,6 +94,7 @@ async def get_settings():
         "available_efforts": getattr(config, "AVAILABLE_EFFORT_LEVELS", []),
         "available_models": getattr(config, "AVAILABLE_MODELS", []),
         "max_session_tokens": getattr(config, "MAX_SESSION_TOKENS", 150000),
+        "compact_completed_chat": getattr(config, "COMPACT_COMPLETED_CHAT", True),
         "quota_status": quota_status
     }
 
@@ -155,6 +161,11 @@ async def update_settings(req: SettingsUpdateRequest):
         set_env("MAX_SESSION_TOKENS", str(tok_val))
         current_persisted["max_session_tokens"] = tok_val
 
+    if req.compact_completed_chat is not None:
+        config.COMPACT_COMPLETED_CHAT = req.compact_completed_chat
+        os.environ["COMPACT_COMPLETED_CHAT"] = str(req.compact_completed_chat).lower()
+        set_env("COMPACT_COMPLETED_CHAT", str(req.compact_completed_chat).lower())
+
     if req.agy_mode is not None:
         mode_val = req.agy_mode.strip().lower()
         if mode_val in ("terminal", "web_stream"):
@@ -183,13 +194,25 @@ async def update_settings(req: SettingsUpdateRequest):
         "default_effort": config.DEFAULT_EFFORT,
         "allow_overage_credits": config.get_cli_overage_credits(),
         "max_session_tokens": config.MAX_SESSION_TOKENS,
+        "compact_completed_chat": config.COMPACT_COMPLETED_CHAT,
         "agy_mode": config.AGY_MODE,
         "default_repo": config.DEFAULT_REPO
     }
     await runner.broadcast("settings_updated", result)
     return result
 
+@app.get("/api/cron/status")
+async def get_cron_status():
+    return {
+        "is_running": dispatcher.is_running,
+        "last_run_at": dispatcher.last_run_at,
+        "next_run_at": dispatcher.next_run_at,
+        "history": dispatcher.dispatch_history[-10:]
+    }
 
+@app.post("/api/cron/dispatch-now")
+async def trigger_cron_dispatch():
+    return await dispatcher.check_and_dispatch()
 
 @app.get("/api/agents", response_model=list[AgentSessionInfo])
 async def list_agents(include_archived: bool = True):
@@ -281,6 +304,14 @@ async def complete_agent(session_id: str):
 
     success = await runner.complete_agent(session_id, reason="Manually marked as Done by user")
     return {"status": "ok", "message": f"Agent {session_id} marked as Done and archived"}
+
+@app.post("/api/agents/{session_id}/compact")
+async def compact_agent(session_id: str):
+    session = runner.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    success = await runner.compact_session(session_id, force=True)
+    return {"status": "ok", "message": f"Agent {session_id} chat compacted", "is_compacted": session.is_compacted}
 
 @app.post("/api/agents/{session_id}/stop")
 async def stop_agent(session_id: str, req: StopAgentRequest = StopAgentRequest()):

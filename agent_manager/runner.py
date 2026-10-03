@@ -11,7 +11,7 @@ from fastapi import WebSocket
 
 from agent_manager.config import (
     DEFAULT_REPO, WORKSPACE_BASE, AGY_CLI_PATH,
-    AGY_MODE, MAX_SESSION_TOKENS
+    AGY_MODE, MAX_SESSION_TOKENS, COMPACT_COMPLETED_CHAT
 )
 from agent_manager.models import (
     AgentSessionInfo, AgentStatus, ConversationMessage,
@@ -256,6 +256,88 @@ class AgentRunnerManager:
         logger.info(f"Agent {session_id} stopped: {reason}")
         return True
 
+    async def compact_session(self, session_id: str, force: bool = False) -> bool:
+        """
+        Compacts / compresses the chat transcript to optimize tokens and eliminate noise.
+        Compresses verbose tool execution logs, intermediate results, and thoughts
+        into a clean structured summary while preserving critical user instructions and deliverables.
+        """
+        session = self.sessions.get(session_id)
+        if not session or not session.messages:
+            return False
+
+        if session.is_compacted and not force:
+            return False
+
+        should_compact = force or getattr(config, "COMPACT_COMPLETED_CHAT", COMPACT_COMPLETED_CHAT)
+        if not should_compact:
+            return False
+
+        original_msgs = session.messages
+        user_msgs = [m for m in original_msgs if m.role == MessageRole.USER]
+        agent_msgs = [m for m in original_msgs if m.role == MessageRole.AGENT]
+        tool_call_count = len([m for m in original_msgs if m.role == MessageRole.TOOL_CALL])
+        tool_result_count = len([m for m in original_msgs if m.role == MessageRole.TOOL_RESULT])
+        thought_count = len([m for m in original_msgs if m.role == MessageRole.THOUGHT])
+
+        # If there are only 1 or 2 messages, no compaction needed
+        if len(original_msgs) <= 3 and tool_call_count == 0:
+            session.is_compacted = True
+            self._save()
+            return True
+
+        # Extract tools used
+        tools_used = set()
+        for m in original_msgs:
+            if m.tool_name:
+                tools_used.add(m.tool_name)
+            elif m.role == MessageRole.TOOL_CALL and m.tool_name:
+                tools_used.add(m.tool_name)
+
+        # Preserve the initial prompt / user instructions
+        initial_prompt = user_msgs[0].content if user_msgs else (session.title or "Initial task")
+        
+        # Collect final deliverable / response
+        latest_agent_resp = agent_msgs[-1].content if agent_msgs else "Task completed successfully."
+        
+        compacted_summary_lines = [
+            f"📦 **Chat Compacted & Compressed (Token Optimization)**",
+            f"- **Execution Summary**: Completed {tool_call_count} tool actions ({', '.join(sorted(tools_used)) if tools_used else 'direct execution'}).",
+            f"- **Compressed Artifacts**: Compacted {tool_call_count + tool_result_count} tool messages and {thought_count} thought traces.",
+            f"- **Tokens Recorded**: {session.total_tokens:,} tokens ({session.input_tokens:,} input / {session.output_tokens:,} output / {session.thinking_tokens:,} reasoning)."
+        ]
+        summary_text = "\n".join(compacted_summary_lines)
+
+        new_messages: List[ConversationMessage] = []
+
+        # 1. Keep initial user instruction
+        if user_msgs:
+            new_messages.append(user_msgs[0])
+
+        # 2. Add the compacted summary badge / note
+        new_messages.append(ConversationMessage(
+            id=str(uuid.uuid4()),
+            role=MessageRole.SYSTEM,
+            content=summary_text
+        ))
+
+        # 3. If there were subsequent user prompts (multi-turn), retain them
+        if len(user_msgs) > 1:
+            for extra_user_msg in user_msgs[1:]:
+                new_messages.append(extra_user_msg)
+
+        # 4. Retain the final agent response / deliverable
+        if agent_msgs:
+            new_messages.append(agent_msgs[-1])
+
+        session.messages = new_messages
+        session.is_compacted = True
+        session.compact_summary = summary_text
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+        logger.info(f"Agent session {session_id} chat transcript compacted successfully ({len(original_msgs)} -> {len(new_messages)} messages).")
+        return True
+
     async def complete_agent(self, session_id: str, reason: str = "Issue moved to 'Done' on Project Board") -> bool:
         """Formally completes and archives the session when the issue card enters 'Done'."""
         session = self.sessions.get(session_id)
@@ -280,6 +362,10 @@ class AgentRunnerManager:
             content=f"✅ [Task Completed & Archived] {reason}. Chat session has concluded successfully."
         )
         session.messages.append(complete_msg)
+
+        # Automatically compress / compact chat when process is completed
+        await self.compact_session(session_id)
+
         self._save()
         await self.broadcast("session_updated", session.model_dump())
         logger.info(f"Agent {session_id} completed: {reason}")
@@ -663,6 +749,11 @@ class AgentRunnerManager:
                     await self._append_message(session_id, MessageRole.SYSTEM, f"Agent CLI exited with code {proc.returncode}: {stderr_txt.strip()[-800:]}")
                 if session.status not in [AgentStatus.PAUSED, AgentStatus.STOPPED, AgentStatus.COMPLETED]:
                     session.status = AgentStatus.IN_REVIEW if proc.returncode == 0 else AgentStatus.FAILED
+                
+                # Automatically compact / compress chat when process finishes successfully
+                if proc.returncode == 0 and session.status != AgentStatus.FAILED:
+                    await self.compact_session(session_id)
+
                 self._save()
                 await self.broadcast("session_updated", session.model_dump())
                 return
