@@ -1,17 +1,27 @@
 # 🤖 Agent Operational Guidelines: agent-manager
 
-This repository is governed by the Antigravity Autonomous Agent Protocol. Any agent contributing to or running within `agent-manager` MUST strictly adhere to these rules.
+This repository is governed by the Antigravity Autonomous Agent Protocol. Any agent contributing to or developing within `agent-manager` MUST strictly adhere to these rules.
 
 ---
 
-## 1. Core Principles
-- **No Work in Main/Master**: Always execute development tasks inside an isolated worktree under `.worktrees/issue-<number>`.
-- **Command Log Suppression**: Always redirect verbose command outputs (tests, linters, builds) to temporary `.log` files. Read only on failure, and clean up afterwards.
-- **Budget Guardrails**: Do not exceed 15 tool turns without posting a progress insight and awaiting approval if an issue is blocked.
+## 1. Mandatory Worktree Development (CRITICAL)
+- **Zero Direct Edits in Main Checkout**: All feature development, bug fixes, refactoring, and updates to `agent-manager` MUST be executed inside an isolated git worktree located under `.worktrees/<branch-name>` (e.g., `.worktrees/feat-<feature-name>` or `.worktrees/issue-<number>`).
+- **Worktree Setup Standard**:
+  ```bash
+  git worktree add -B "feat/<feature-name>" ".worktrees/feat-<feature-name>" origin/main
+  ```
+- **Isolated Testing**: Run and validate tests, lints, and syntax checks within the worktree.
+- **Merge via PR / Clean Branch**: Commit changes on the feature branch, push, and create a Pull Request. Never modify the root `main` branch directly during feature work.
 
 ---
 
-## 2. Agent Manager Specific Rules
-- **Non-blocking Dispatch**: The webhook receiver must immediately acknowledge webhooks with HTTP 200/201 and offload agent execution to background asyncio tasks.
-- **Graceful Context Queuing**: Never interrupt ongoing tool executions abruptly when injecting context; append to the session queue so the agent ingests the context on its next conversational step.
-- **Safe Worktree Cleanup**: Upon completion of an issue, verify that the PR has been opened and changes committed before pruning worktrees.
+## 2. Command Log Suppression (User Global Rule)
+- **Clean Execution Logs**: Never run verbose commands directly in the shell without redirection. Append `> <log_name>.log 2>&1` to keep task execution clean.
+- **Inspect on Failure Only**: Read only the last 20-50 lines if exit code is non-zero. Clean up temporary logs immediately.
+
+---
+
+## 3. GitHub Project Board & Issue Rules
+- **No Tag Modifications**: Never add, remove, or modify GitHub issue tags/labels (e.g. `agent:*`). All status transitions are managed purely via the GitHub Project Board columns.
+- **Chat Stays Open Until 'Done'**: Agent sessions and chats must remain open in `IN_REVIEW` for continuous user feedback and testing until the card is explicitly moved to `✅ Done` on the Project Board.
+- **Re-Queued Task Ingestion**: When an issue is moved back into `📋 Ready for Agent`, automatically inspect the issue for new user comments or requirement edits and feed them into the agent as continuation context.
