@@ -42,9 +42,22 @@ AGY_MODE = os.getenv("AGY_MODE", "terminal").lower()
 MAX_SESSION_TOKENS = int(os.getenv("MAX_SESSION_TOKENS", "150000"))
 
 AVAILABLE_MODELS = [
-    {"id": "gemini-3.1-pro-high", "name": "Gemini 3.1 Pro (High Reasoning)", "type": "Antigravity Subscription"},
-    {"id": "gemini-3.8-flash-high", "name": "Gemini 3.8 Flash (High Speed)", "type": "Antigravity Subscription"},
-    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (Thinking)", "type": "Antigravity Subscription"},
-    {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro (Google AI Studio)", "type": "Gemini API Key"},
-    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash (Google AI Studio)", "type": "Gemini API Key"},
+    {"id": "gemini-3.8-flash-high", "name": "Gemini 3.8 Flash (High Reasoning)", "effort": "high", "type": "Antigravity Subscription"},
+    {"id": "gemini-3.8-flash-medium", "name": "Gemini 3.8 Flash (Medium Reasoning)", "effort": "medium", "type": "Antigravity Subscription"},
+    {"id": "gemini-3.8-flash-low", "name": "Gemini 3.8 Flash (Low / Fast)", "effort": "low", "type": "Antigravity Subscription"},
+    {"id": "gemini-3.1-pro-high", "name": "Gemini 3.1 Pro (High Reasoning)", "effort": "high", "type": "Antigravity Subscription"},
+    {"id": "gemini-3.1-pro-low", "name": "Gemini 3.1 Pro (Low / Fast)", "effort": "low", "type": "Antigravity Subscription"},
+    {"id": "claude-sonnet-5-5-high", "name": "Claude Sonnet 5.5 (High Reasoning)", "effort": "high", "type": "Antigravity Subscription"},
+    {"id": "claude-sonnet-5-5-medium", "name": "Claude Sonnet 5.5 (Medium Reasoning)", "effort": "medium", "type": "Antigravity Subscription"},
+    {"id": "claude-opus-5-5-high", "name": "Claude Opus 5.5 (High Reasoning)", "effort": "high", "type": "Antigravity Subscription"},
+]
+
+DEFAULT_EFFORT = os.getenv("DEFAULT_EFFORT", "high")
+
+AVAILABLE_EFFORT_LEVELS = [
+    {"id": "low", "name": "Low (Fast turnaround, minimal thinking tokens)"},
+    {"id": "medium", "name": "Medium (Balanced reasoning & speed)"},
+    {"id": "high", "name": "High (Deep reasoning, thorough analysis)"},
+    {"id": "xhigh", "name": "Extra High (Exhaustive chain-of-thought)"},
+    {"id": "max", "name": "Max (Uncapped cognitive reasoning budget)"}
 ]

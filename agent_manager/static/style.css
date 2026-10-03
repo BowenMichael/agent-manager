@@ -1343,3 +1343,68 @@ body {
 .link-pill:hover {
   color: var(--accent-cyan);
 }
+
+/* Agent Activity Status Bar & Hang Indicator */
+.agent-activity-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  transition: all 0.25s ease;
+}
+
+.activity-info-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.activity-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0, 229, 255, 0.25);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.activity-text {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.agent-activity-bar.stalled {
+  background: rgba(245, 158, 11, 0.15);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fde68a;
+}
+
+.agent-activity-bar.stalled .activity-spinner {
+  border-top-color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.btn-interrupt {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-interrupt:hover {
+  background: rgba(239, 68, 68, 0.35);
+  color: #fff;
+}

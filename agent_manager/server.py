@@ -32,6 +32,7 @@ watcher = LocalGitWatcher()
 async def lifespan(app: FastAPI):
     # Startup: Start local Git board watcher
     watcher.start()
+    asyncio.create_task(runner.start_watchdog())
     yield
     # Shutdown: Stop watcher
     watcher.stop()
@@ -86,7 +87,9 @@ async def get_settings():
         "agy_mode": getattr(config, "AGY_MODE", "web_stream"),
         "agy_cli_installed": config.AGY_CLI_PATH.exists(),
         "agy_cli_path": str(config.AGY_CLI_PATH),
-        "default_model": getattr(config, "DEFAULT_MODEL", "gemini-3.1-pro-high"),
+        "default_model": getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash-high"),
+        "default_effort": getattr(config, "DEFAULT_EFFORT", "high"),
+        "available_efforts": getattr(config, "AVAILABLE_EFFORT_LEVELS", []),
         "available_models": getattr(config, "AVAILABLE_MODELS", []),
         "max_session_tokens": getattr(config, "MAX_SESSION_TOKENS", 150000),
         "quota_status": quota_status
@@ -114,6 +117,13 @@ async def update_settings(req: SettingsUpdateRequest):
         if not found:
             new_lines.append(f"{key_name}={val}")
         lines = new_lines
+
+    
+    if req.effort_level:
+        eff_val = req.effort_level.strip().lower()
+        config.DEFAULT_EFFORT = eff_val
+        os.environ["DEFAULT_EFFORT"] = eff_val
+        set_env("DEFAULT_EFFORT", eff_val)
 
     if req.default_model:
         model_val = req.default_model.strip()
@@ -145,6 +155,7 @@ async def update_settings(req: SettingsUpdateRequest):
         "status": "ok",
         "has_gemini_api_key": bool(config.GEMINI_API_KEY),
         "default_model": config.DEFAULT_MODEL,
+        "default_effort": config.DEFAULT_EFFORT,
         "max_session_tokens": config.MAX_SESSION_TOKENS,
         "agy_mode": config.AGY_MODE
     }
@@ -197,6 +208,13 @@ async def sync_board():
         return {"status": "ok", "message": "Project board synced successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/agents/{session_id}/interrupt")
+async def interrupt_agent(session_id: str):
+    success = await runner.interrupt_agent(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": f"Agent {session_id} interrupted"}
 
 @app.post("/api/agents/{session_id}/complete")
 async def complete_agent(session_id: str):
