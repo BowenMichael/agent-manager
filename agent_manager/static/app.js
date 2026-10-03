@@ -278,8 +278,14 @@ function renderMessageItem(msg) {
   transcriptStream.appendChild(bubble);
 }
 
-function scrollToBottom() {
-  transcriptViewport.scrollTop = transcriptViewport.scrollHeight;
+function scrollToBottom(smooth = false) {
+  if (transcriptViewport) {
+    if (smooth) {
+      transcriptViewport.scrollTo({ top: transcriptViewport.scrollHeight, behavior: 'smooth' });
+    } else {
+      transcriptViewport.scrollTop = transcriptViewport.scrollHeight;
+    }
+  }
 }
 
 // Action: Stop Current Agent
