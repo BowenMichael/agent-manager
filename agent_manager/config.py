@@ -61,3 +61,11 @@ AVAILABLE_EFFORT_LEVELS = [
     {"id": "xhigh", "name": "Extra High (Exhaustive chain-of-thought)"},
     {"id": "max", "name": "Max (Uncapped cognitive reasoning budget)"}
 ]
+
+# All GitHub Project boards to watch (comma-separated). Defaults to F1 board + Agent Manager board.
+PROJECT_BOARD_IDS = [
+    p.strip() for p in os.getenv(
+        "PROJECT_BOARD_IDS",
+        f"{PROJECT_BOARD_ID},PVT_kwHOAgkA3s4BlnSi"
+    ).split(",") if p.strip()
+]

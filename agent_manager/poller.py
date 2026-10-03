@@ -4,7 +4,7 @@ import httpx
 from typing import Optional, Set, Dict
 
 from agent_manager.config import (
-    GITHUB_PERSONAL_ACCESS_TOKEN, PROJECT_BOARD_ID,
+    GITHUB_PERSONAL_ACCESS_TOKEN, PROJECT_BOARD_ID, PROJECT_BOARD_IDS,
     DEFAULT_REPO, POLL_INTERVAL_SECONDS
 )
 from agent_manager.models import SpawnRequest, AgentStatus
@@ -14,6 +14,13 @@ logger = logging.getLogger("agent_manager.poller")
 
 # Project Board V2 Field and Option IDs (F1 Viewer Sprint Board)
 STATUS_FIELD_ID = "PVTSSF_lAHOAgkA3s4BlmhhzhkSuu0"
+STATUS_NAMES = {
+    "backlog": "📥 Backlog",
+    "ready": "📋 Ready for Agent",
+    "in_progress": "⚡ In Progress",
+    "in_review": "🔍 In Review",
+    "done": "✅ Done",
+}
 STATUS_OPTIONS = {
     "backlog": "3abe26ce",      # 📥 Backlog
     "ready": "8b88d8d3",        # 📋 Ready for Agent
@@ -32,8 +39,10 @@ class LocalGitWatcher:
     """
     def __init__(self):
         self.runner = AgentRunnerManager()
-        self.active_issues: Set[int] = set()
-        self.item_id_map: Dict[int, str] = {}  # issue_number -> project_item_id
+        self.active_issues: Set[str] = set()
+        self.item_id_map: Dict[str, str] = {}  # "owner/repo#num" -> project_item_id
+        self.item_project_map: Dict[str, str] = {}  # project_item_id -> project_id
+        self._board_fields: Dict[str, dict] = {}  # project_id -> {"field_id":..., "options": {key: option_id}}
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -52,8 +61,9 @@ class LocalGitWatcher:
     async def _poll_loop(self):
         while self._running:
             try:
-                if GITHUB_PERSONAL_ACCESS_TOKEN and PROJECT_BOARD_ID:
-                    await self._check_project_board()
+                if GITHUB_PERSONAL_ACCESS_TOKEN:
+                    for board_id in PROJECT_BOARD_IDS:
+                        await self._check_project_board(board_id)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -61,8 +71,46 @@ class LocalGitWatcher:
 
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
-    async def update_item_status(self, item_id: str, option_id: str) -> bool:
+    async def _resolve_board_fields(self, project_id: str) -> Optional[dict]:
+        if project_id in self._board_fields:
+            return self._board_fields[project_id]
+        query = """
+        query($projectId: ID!) {
+          node(id: $projectId) {
+            ... on ProjectV2 {
+              fields(first: 30) {
+                nodes {
+                  ... on ProjectV2SingleSelectField { id name options { id name } }
+                }
+              }
+            }
+          }
+        }
+        """
+        headers = {"Authorization": f"Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}", "Content-Type": "application/json", "User-Agent": "AgentManagerLocal/1.0"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post("https://api.github.com/graphql", json={"query": query, "variables": {"projectId": project_id}}, headers=headers)
+        nodes = (resp.json().get("data", {}).get("node", {}) or {}).get("fields", {}).get("nodes", [])
+        for f in nodes:
+            if f and f.get("name") == "Status":
+                opts = {}
+                for key, name in STATUS_NAMES.items():
+                    for o in f.get("options", []):
+                        if o["name"] == name:
+                            opts[key] = o["id"]
+                self._board_fields[project_id] = {"field_id": f["id"], "options": opts}
+                return self._board_fields[project_id]
+        logger.warning("No Status field found on project %s", project_id)
+        return None
+
+    async def update_item_status(self, item_id: str, status_key: str) -> bool:
         """Updates the status column directly on GitHub Project Board V2 without touching issue tags."""
+        project_id = self.item_project_map.get(item_id, PROJECT_BOARD_ID)
+        board = await self._resolve_board_fields(project_id)
+        if not board or status_key not in board["options"]:
+            logger.warning("Cannot resolve status '%s' on project %s", status_key, project_id)
+            return False
+        option_id = board["options"][status_key]
         mutation = """
         mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
           updateProjectV2ItemFieldValue(
@@ -89,9 +137,9 @@ class LocalGitWatcher:
                     json={
                         "query": mutation,
                         "variables": {
-                            "projectId": PROJECT_BOARD_ID,
+                            "projectId": project_id,
                             "itemId": item_id,
-                            "fieldId": STATUS_FIELD_ID,
+                            "fieldId": board["field_id"],
                             "optionId": option_id
                         }
                     },
@@ -102,7 +150,7 @@ class LocalGitWatcher:
             logger.error("Failed to update item status: %s", e)
             return False
 
-    async def _check_project_board(self):
+    async def _check_project_board(self, project_id: str = PROJECT_BOARD_ID):
         query = """
         query($projectId: ID!) {
           node(id: $projectId) {
@@ -152,7 +200,7 @@ class LocalGitWatcher:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 "https://api.github.com/graphql",
-                json={"query": query, "variables": {"projectId": PROJECT_BOARD_ID}},
+                json={"query": query, "variables": {"projectId": project_id}},
                 headers=headers
             )
             if resp.status_code != 200:
@@ -180,28 +228,30 @@ class LocalGitWatcher:
                 body = content.get("body") or ""
                 repo = content.get("repository", {}).get("nameWithOwner", DEFAULT_REPO)
                 comments = content.get("comments", {}).get("nodes", [])
-                self.item_id_map[issue_num] = item["id"]
+                issue_key = f"{repo}#{issue_num}"
+                self.item_id_map[issue_key] = item["id"]
+                self.item_project_map[item["id"]] = project_id
 
                 # 1. LIFECYCLE: Completed only when manually moved to Done
-                if status_name == "✅ Done" or option_id == STATUS_OPTIONS["done"]:
+                if status_name == STATUS_NAMES["done"]:
                     for s in self.runner.list_sessions():
-                        if s.issue_number == issue_num and s.status != AgentStatus.COMPLETED:
+                        if s.issue_number == issue_num and s.repo == repo and s.status != AgentStatus.COMPLETED:
                             logger.info("Issue #%s detected in '✅ Done'. Formally completing and archiving session %s", issue_num, s.session_id)
                             await self.runner.complete_agent(s.session_id, reason="Issue moved to 'Done' on GitHub Project Board")
-                    self.active_issues.discard(issue_num)
+                    self.active_issues.discard(issue_key)
                     continue
 
                 # 2. AUTO-SYNC: If session is IN_REVIEW, ensure Project Board is marked In Review
                 for s in self.runner.list_sessions():
-                    if s.issue_number == issue_num and s.status == AgentStatus.IN_REVIEW:
+                    if s.issue_number == issue_num and s.repo == repo and s.status == AgentStatus.IN_REVIEW:
                         if status_name == "⚡ In Progress":
-                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_review"])
+                            await self.update_item_status(item["id"], "in_review")
                             logger.info("Updated Issue #%s Project Board status to '🔍 In Review'", issue_num)
 
                 # 3. RE-QUEUE & NEW ISSUE: Status is '📋 Ready for Agent'
-                if status_name == "📋 Ready for Agent" or option_id == STATUS_OPTIONS["ready"]:
+                if status_name == STATUS_NAMES["ready"]:
                     existing_session = next(
-                        (s for s in self.runner.list_sessions() if s.issue_number == issue_num),
+                        (s for s in self.runner.list_sessions() if s.issue_number == issue_num and s.repo == repo),
                         None
                     )
 
@@ -239,7 +289,7 @@ class LocalGitWatcher:
                             self.runner._save()
 
                             # Move status on board to In Progress
-                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_progress"])
+                            await self.update_item_status(item["id"], "in_progress")
                             logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
 
                             continuation_prompt = (
@@ -262,7 +312,7 @@ class LocalGitWatcher:
                             existing_session.last_issue_body = body
                             self.runner._save()
 
-                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_progress"])
+                            await self.update_item_status(item["id"], "in_progress")
                             continuation_prompt = (
                                 f"Issue #{issue_num} has been moved back into Ready for Agent.\n"
                                 f"Please review the work completed in the worktree, test existing features, and continue working on any remaining requirements."
@@ -273,13 +323,13 @@ class LocalGitWatcher:
                         # Brand new agent task spawn
                         active_sessions = [
                             s for s in self.runner.list_sessions()
-                            if s.issue_number == issue_num and s.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING, AgentStatus.PAUSED]
+                            if s.issue_number == issue_num and s.repo == repo and s.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING, AgentStatus.PAUSED]
                         ]
-                        if not active_sessions and issue_num not in self.active_issues:
+                        if not active_sessions and issue_key not in self.active_issues:
                             logger.info("Found new issue #%s in Ready for Agent. Moving status to In Progress on Project Board...", issue_num)
-                            self.active_issues.add(issue_num)
+                            self.active_issues.add(issue_key)
 
-                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_progress"])
+                            await self.update_item_status(item["id"], "in_progress")
                             logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
 
                             prompt = (

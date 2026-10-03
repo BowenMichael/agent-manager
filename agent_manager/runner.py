@@ -21,6 +21,15 @@ from agent_manager.storage import save_sessions, load_sessions
 
 logger = logging.getLogger("agent_manager.runner")
 
+QUOTA_PATTERNS = (
+    "quota", "resource_exhausted", "resource exhausted", "rate limit", "rate_limit",
+    "429", "too many requests", "usage limit", "limit reached", "out of credits",
+)
+
+def _looks_like_quota_error(text: str) -> bool:
+    t = (text or "").lower()
+    return any(p in t for p in QUOTA_PATTERNS)
+
 class AgentRunnerManager:
     _instance: Optional["AgentRunnerManager"] = None
 
@@ -189,6 +198,8 @@ class AgentRunnerManager:
 
         session.status = AgentStatus.RUNNING
         session.error_message = None
+        session.quota_exceeded = False
+        session.quota_message = None
         resume_msg = ConversationMessage(
             id=str(uuid.uuid4()),
             role=MessageRole.SYSTEM,
@@ -276,6 +287,8 @@ class AgentRunnerManager:
         )
         session.messages.append(user_msg)
         session.is_stalled = False
+        session.quota_exceeded = False
+        session.quota_message = None
         session.current_activity = "Processing new user instructions..."
         self._save()
         await self.broadcast("message_added", {"session_id": session_id, "message": user_msg.model_dump()})
@@ -520,10 +533,25 @@ class AgentRunnerManager:
                             )
                             self._save()
                             await self.broadcast("session_updated", session.model_dump())
+                        elif ev == "error" or event_obj.get("error"):
+                            err_txt = json.dumps(event_obj.get("error", event_obj))
+                            if _looks_like_quota_error(err_txt):
+                                await self._flag_quota_exceeded(session_id, err_txt)
+                    except json.JSONDecodeError:
+                        if _looks_like_quota_error(line_str):
+                            await self._flag_quota_exceeded(session_id, line_str)
                     except Exception as json_err:
                         logger.debug(f"JSON stream line parse info: {json_err}")
 
                 await proc.wait()
+                try:
+                    stderr_txt = (await proc.stderr.read()).decode("utf-8", errors="replace")
+                except Exception:
+                    stderr_txt = ""
+                if proc.returncode != 0 and _looks_like_quota_error(stderr_txt):
+                    await self._flag_quota_exceeded(session_id, stderr_txt)
+                elif proc.returncode != 0 and stderr_txt.strip():
+                    await self._append_message(session_id, MessageRole.SYSTEM, f"Agent CLI exited with code {proc.returncode}: {stderr_txt.strip()[-800:]}")
                 if session.status not in [AgentStatus.PAUSED, AgentStatus.STOPPED, AgentStatus.COMPLETED]:
                     session.status = AgentStatus.IN_REVIEW if proc.returncode == 0 else AgentStatus.FAILED
                 self._save()
@@ -600,3 +628,31 @@ class AgentRunnerManager:
         await self.broadcast("session_updated", session.model_dump())
         logger.info(f"Agent session {session_id} manually interrupted.")
         return True
+
+    async def _flag_quota_exceeded(self, session_id: str, detail: str):
+        """Pauses the session and raises a prominent quota alert in the dashboard."""
+        session = self.sessions.get(session_id)
+        if not session or session.quota_exceeded:
+            return
+        session.status = AgentStatus.PAUSED
+        session.quota_exceeded = True
+        session.is_stalled = False
+        session.quota_message = detail.strip()[:500] or "Model quota / rate limit reached."
+        session.current_activity = "🚫 Quota limit reached"
+        session.error_message = session.quota_message
+        await self._append_message(
+            session_id, MessageRole.SYSTEM,
+            f"🚫 [Quota Limit Reached] The model provider rejected the request: {session.quota_message}\n"
+            f"Work in {session.worktree_path or 'the workspace'} is preserved. Switch to a different model in Settings "
+            f"or wait for the quota window to reset, then click 'Resume'."
+        )
+        self._save()
+        await self.broadcast("quota_alert", {
+            "session_id": session_id,
+            "title": session.title,
+            "issue_number": session.issue_number,
+            "repo": session.repo,
+            "message": session.quota_message,
+        })
+        await self.broadcast("session_updated", session.model_dump())
+        logger.warning(f"Quota limit reached for session {session_id}: {session.quota_message}")

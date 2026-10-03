@@ -1,4 +1,50 @@
 
+// ---- Quota limit notifications ----
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission().catch(() => {});
+}
+function showQuotaToast(data) {
+  const stack = document.getElementById('toast-stack');
+  const label = data.issue_number ? `${data.repo} #${data.issue_number}` : data.title;
+  if (stack) {
+    const t = document.createElement('div');
+    t.className = 'toast-quota';
+    t.innerHTML = `<div class="toast-title">🚫 Quota limit reached — ${escapeHtml(label || '')}</div><div class="toast-body">${escapeHtml(data.message || '')}</div>`;
+    t.addEventListener('click', () => { selectSession(data.session_id); t.remove(); });
+    stack.appendChild(t);
+    setTimeout(() => t.remove(), 20000);
+  }
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const n = new Notification('Agent quota limit reached', { body: `${label}: ${data.message || ''}`.slice(0, 200) });
+    n.onclick = () => { window.focus(); selectSession(data.session_id); };
+  }
+  document.title = '🚫 Quota hit — Agent Manager';
+}
+function renderQuotaBanner(session) {
+  const banner = document.getElementById('quota-alert-banner');
+  if (!banner) return;
+  if (session && session.quota_exceeded) {
+    banner.classList.remove('hidden');
+    document.getElementById('quota-alert-text').textContent =
+      (session.quota_message || 'The model provider rejected the request.') + ' Your work is preserved.';
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const btnSettings = document.getElementById('btn-quota-settings');
+  const btnResume = document.getElementById('btn-quota-resume');
+  if (btnSettings) btnSettings.addEventListener('click', () => {
+    const s = document.getElementById('btn-settings') || document.querySelector('[id*="settings"]');
+    if (s) s.click();
+  });
+  if (btnResume) btnResume.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    await fetch(`/api/agents/${activeSessionId}/resume`, { method: 'POST' });
+    document.title = 'Agent Manager';
+  });
+});
+
 // Agent Activity & Stall Tracking
 const agentActivityBar = document.getElementById('agent-activity-bar');
 const activitySpinner = document.getElementById('activity-spinner');
@@ -166,6 +212,10 @@ function handleWsMessage(msg) {
       }
       break;
 
+    case 'quota_alert':
+      showQuotaToast(msg.data);
+      break;
+
     case 'token_stream':
       const { session_id: sId, token } = msg.data;
       const s = sessions.find(s => s.session_id === sId);
@@ -222,7 +272,7 @@ function renderSessionsList() {
 
     card.innerHTML = `
       <div class="card-top">
-        <span class="card-status-badge ${statusBadgeClass}">${session.status}</span>
+        <span class="card-status-badge ${session.quota_exceeded ? 'badge-quota' : statusBadgeClass}">${session.quota_exceeded ? '🚫 QUOTA' : session.status}</span>
         <span class="card-time">${formatTime(session.started_at)}</span>
       </div>
       <div class="card-title">${escapeHtml(session.title)}</div>
@@ -256,6 +306,7 @@ function selectSession(sessionId) {
 }
 
 function updateActiveSessionView(session) {
+  renderQuotaBanner(session);
   // Update live activity status & hang indicator
   if (agentActivityBar && activityText) {
     if (session.is_stalled) {

@@ -57,6 +57,8 @@ class AgentSessionInfo(BaseModel):
     current_activity: Optional[str] = "IDLE"
     last_activity_at: Optional[str] = None
     is_stalled: bool = False
+    quota_exceeded: bool = False
+    quota_message: Optional[str] = None
     seen_comment_ids: List[str] = Field(default_factory=list)
     last_issue_body: Optional[str] = None
 
