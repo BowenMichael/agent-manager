@@ -1,27 +1,112 @@
-# 🤖 Agent Operational Guidelines: agent-manager
+# Autonomous Agent Guidelines & Budget Guardrails
 
-This repository is governed by the Antigravity Autonomous Agent Protocol. Any agent contributing to or developing within `agent-manager` MUST strictly adhere to these rules.
+This project follows the **Antigravity Autonomous Agent Protocol & Issue-Driven Development Lifecycle**. All AI agents operating in, or contributing to, `agent-manager` MUST strictly adhere to the following rules:
 
 ---
 
-## 1. Mandatory Worktree Development (CRITICAL)
-- **Zero Direct Edits in Main Checkout**: All feature development, bug fixes, refactoring, and updates to `agent-manager` MUST be executed inside an isolated git worktree located under `.worktrees/<branch-name>` (e.g., `.worktrees/feat-<feature-name>` or `.worktrees/issue-<number>`).
-- **Worktree Setup Standard**:
-  ```bash
-  git worktree add -B "feat/<feature-name>" ".worktrees/feat-<feature-name>" origin/main
+## 1. Mandatory Worktree Development & Task Lifecycle (CRITICAL)
+
+### A. Git Worktree Isolation (Strictly Enforced)
+To prevent interference with the developer's active editor, other agent sessions, or local uncommitted changes:
+1. **Zero Direct Edits in Main Checkout**: All feature development, refactoring, and bug fixes MUST occur in an isolated Git worktree under `.worktrees/<branch-name>` (e.g. `.worktrees/feat-<feature-name>` or `.worktrees/issue-<number>`).
+2. **Worktree Creation**:
+   ```bash
+   git worktree add -B "feat/<short-description>" ".worktrees/feat-<short-description>" origin/main
+   ```
+3. **Execution**:
+   - All file edits, builds, tests, and commits must be scoped exclusively to the worktree directory.
+4. **Completion & Cleanup**:
+   - Push the branch from the worktree:
+     ```bash
+     git push origin feat/<short-description>
+     ```
+   - Open a Pull Request linking to the issue with visual proof, test logs, and acceptance criteria verification.
+   - Clean up the worktree once the branch is merged/archived:
+     ```bash
+     git worktree remove .worktrees/feat-<short-description>
+     ```
+
+### B. Issue Takeover Notification
+When picking up an issue from GitHub:
+1. **Selection**: Look for issues with Project Board Status **`📋 Ready for Agent`**.
+2. **Immediate Project Board Update**:
+   - Move the card on the GitHub Project Board directly to **`⚡ In Progress`**.
+   - **CRITICAL**: Do NOT add, remove, or modify GitHub issue labels/tags. Status transitions are managed purely via Project Board columns.
+3. **Mandatory Issue Takeover Comment**:
+   The agent **MUST immediately comment** on the GitHub issue to notify the team that development has commenced:
+   ```markdown
+   🤖 **Agent Takeover: Development Started**
+
+   - **Worktree**: `.worktrees/issue-<number>`
+   - **Branch**: `feat/issue-<number>-<short-description>`
+   - **Planned Approach**:
+     1. [Step 1: Implementation blueprint & file inspection]
+     2. [Step 2: Core changes, unit tests, and validation]
+     3. [Step 3: Verification, demo recording, and PR creation]
+   - **Budget Guardrail**: Max 15 tool execution turns before pause & review.
+   ```
+
+### C. Issue & Project Board Synchronization (Anti-Duplication Protocol)
+To ensure multiple agents or team members never duplicate work:
+1. **Check Claim Status First**:
+   - Before taking any action on an issue, verify it is strictly in `📋 Ready for Agent` state and has no active worktree in `.worktrees/`.
+   - If an issue is already in `⚡ In Progress`, `🔍 In Review`, or has an active worktree, **DO NOT TOUCH IT**.
+2. **Post Deliverables Directly to the GitHub Issue**:
+   - **Never keep answers only in local IDE chat.**
+   - All architecture specifications, deployment guides, research findings, and task completions must be posted as formal comments on the GitHub issue.
+3. **Mark Acceptance Criteria Checkboxes**:
+   - When criteria are satisfied, update the GitHub issue body via API to check off the boxes (`- [x]`).
+4. **Move to Review**:
+   - Once all criteria are met, move the card on the Project Board to **`🔍 In Review`**.
+
+---
+
+## 2. 🛑 Token & Complexity Budget Guardrail (Mandatory Pause)
+
+To ensure tasks remain cost-effective and prevent run-away context/token consumption, the agent must enforce the following guardrail:
+
+### Thresholds
+- **Turn Limit**: If a single task reaches **15 tool execution turns** without completing the implementation.
+- **Token Budget**: If the session approaches the session token budget limit (default: 150,000 tokens).
+- **Repetitive Loops**: If the conversation encounters repetitive failure loops, unexpected circular dependencies, or major unplanned refactoring.
+
+### Mandatory Pause Protocol
+When a threshold is reached, the agent **MUST IMMEDIATELY PAUSE** execution on the issue and execute the following:
+
+1. **Post Insights Breakdown** (both as an Issue comment and in the dashboard stream):
+   ```markdown
+   ⚠️ **Task Paused: Token / Complexity Budget Threshold Reached**
+   
+   ### 📊 Task Insights
+   - **Progress Completed**: [Summary of files edited and components built]
+   - **Remaining Work**: [Exact items needed to reach acceptance criteria]
+   - **Cost / Complexity Driver**: [Explain why token consumption is high]
+   - **Proposed Next Action**: [Option A: Approve 10 more turns to finish; Option B: Narrow scope; Option C: Human intervention]
+   ```
+2. **Await User Approval**:
+   - The agent MUST NOT take further code modification actions until the user explicitly responds with approval to proceed.
+
+---
+
+## 3. Command Log Suppression (User Global Rule)
+- **Suppress Verbose Output**: Never run build, test, typecheck, or lint commands directly in the shell without redirection if they produce verbose output. Instead, redirect their output to a temporary log file:
+  ```powershell
+  npm run test > test_run.log 2>&1
+  npx tsc --noEmit > tsc_run.log 2>&1
   ```
-- **Isolated Testing**: Run and validate tests, lints, and syntax checks within the worktree.
-- **Merge via PR / Clean Branch**: Commit changes on the feature branch, push, and create a Pull Request. Never modify the root `main` branch directly during feature work.
+- **Inspect on Failure Only**:
+  - If the command succeeds (exit code `0`), do not output or read the log file.
+  - If the command fails (exit code non-zero), view *only* the last 20 to 50 lines of the log file to diagnose the error:
+    ```powershell
+    Get-Content -Tail 40 test_run.log
+    ```
+- **Clean Up**: Delete temporary log files immediately once the check is complete:
+  ```powershell
+  Remove-Item test_run.log, tsc_run.log -ErrorAction SilentlyContinue
+  ```
 
 ---
 
-## 2. Command Log Suppression (User Global Rule)
-- **Clean Execution Logs**: Never run verbose commands directly in the shell without redirection. Append `> <log_name>.log 2>&1` to keep task execution clean.
-- **Inspect on Failure Only**: Read only the last 20-50 lines if exit code is non-zero. Clean up temporary logs immediately.
-
----
-
-## 3. GitHub Project Board & Issue Rules
-- **No Tag Modifications**: Never add, remove, or modify GitHub issue tags/labels (e.g. `agent:*`). All status transitions are managed purely via the GitHub Project Board columns.
-- **Chat Stays Open Until 'Done'**: Agent sessions and chats must remain open in `IN_REVIEW` for continuous user feedback and testing until the card is explicitly moved to `✅ Done` on the Project Board.
-- **Re-Queued Task Ingestion**: When an issue is moved back into `📋 Ready for Agent`, automatically inspect the issue for new user comments or requirement edits and feed them into the agent as continuation context.
+## 4. Chat Lifecycle & Re-Queued Task Ingestion
+- **Chat Stays Open Until 'Done'**: Agent sessions and chats must remain open and interactive in `IN_REVIEW` for continuous user feedback, questions, and testing until the card is explicitly moved to `✅ Done` on the Project Board.
+- **Re-Queued Task Ingestion**: When an issue is moved back into `📋 Ready for Agent`, the system automatically inspects the issue for new user comments or requirement edits and feeds them into the existing agent session as continuation context in its active worktree.
