@@ -30,6 +30,8 @@ class AgentRunnerManager:
         return cls._instance
 
     def _init_manager(self):
+        self._watchdog_task = None
+
         # Load cached sessions from persistent disk storage
         self.sessions: Dict[str, AgentSessionInfo] = load_sessions()
         self._active_agents: Dict[str, asyncio.subprocess.Process] = {}
@@ -260,7 +262,7 @@ class AgentRunnerManager:
         return True
 
     async def add_context(self, session_id: str, context: str) -> bool:
-        """Injects user response / instructions into the agent and ensures continuation."""
+        """Injects user response / instructions into the agent. If process is hanging or running, safely interrupts it and executes continuation."""
         session = self.sessions.get(session_id)
         if not session:
             return False
@@ -272,31 +274,40 @@ class AgentRunnerManager:
             content=context
         )
         session.messages.append(user_msg)
+        session.is_stalled = False
+        session.current_activity = "Processing new user instructions..."
         self._save()
         await self.broadcast("message_added", {"session_id": session_id, "message": user_msg.model_dump()})
 
-        # Put context into the active agent queue
+        # Put context into queue
         queue = self._context_queues.get(session_id)
         if queue:
             await queue.put(context)
 
-        # Check if background task is actively running
-        task = self._tasks.get(session_id)
-        if not task or task.done():
-            logger.info(f"Session {session_id} was waiting/in review; waking up agent with continuation turn.")
-            session.status = AgentStatus.RUNNING
-            session.error_message = None
-            self._save()
-            await self.broadcast("session_updated", session.model_dump())
-            new_task = asyncio.create_task(
-                self._run_agent_loop(session_id, context, session.worktree_path, is_continuation=True)
-            )
-            self._tasks[session_id] = new_task
-        else:
-            session.status = AgentStatus.RUNNING
-            self._save()
-            await self.broadcast("session_updated", session.model_dump())
+        # If a process or task is currently hung or executing, interrupt it to run the new instruction
+        proc = self._active_agents.get(session_id)
+        if proc and hasattr(proc, 'terminate'):
+            logger.info(f"Interrupting active/stalled process for session {session_id} to process new user context.")
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            self._active_agents.pop(session_id, None)
 
+        task = self._tasks.get(session_id)
+        if task and not task.done():
+            task.cancel()
+
+        logger.info(f"Starting continuation turn for session {session_id} with newly injected context.")
+        session.status = AgentStatus.RUNNING
+        session.error_message = None
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+
+        new_task = asyncio.create_task(
+            self._run_agent_loop(session_id, context, session.worktree_path, is_continuation=True)
+        )
+        self._tasks[session_id] = new_task
         return True
 
     async def _append_message(self, session_id: str, role: MessageRole, content: str, tool_name: Optional[str] = None, tool_args: Optional[dict] = None) -> ConversationMessage:
@@ -346,7 +357,9 @@ class AgentRunnerManager:
             # Option 1: Terminal Mode
             if AGY_MODE == "terminal":
                 escaped_prompt = agy_prompt.replace('"', '`"')
-                cmd = f'& "{AGY_CLI_PATH}" --dangerously-skip-permissions -i "{escaped_prompt}"'
+                selected_model = getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash-high")
+                selected_effort = getattr(config, "DEFAULT_EFFORT", "high")
+                cmd = f'& "{AGY_CLI_PATH}" --model "{selected_model}" --effort "{selected_effort}" --dangerously-skip-permissions -i "{escaped_prompt}"'
                 session.terminal_command = cmd
                 title_str = f"Antigravity CLI (agy) - Issue #{issue_num}"
                 ps_cmd = f'powershell -NoExit -Command "$host.ui.RawUI.WindowTitle = \"{title_str}\"; {cmd}"'
@@ -378,8 +391,12 @@ class AgentRunnerManager:
                 self._save()
                 await self.broadcast("session_updated", session.model_dump())
 
+                selected_model = getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash-high")
+                selected_effort = getattr(config, "DEFAULT_EFFORT", "high")
                 cmd_args = [
                     str(AGY_CLI_PATH),
+                    "--model", selected_model,
+                    "--effort", selected_effort,
                     "--dangerously-skip-permissions",
                     "--output-format", "stream-json"
                 ]
@@ -407,6 +424,11 @@ class AgentRunnerManager:
                         event_obj = json.loads(line_str)
                         ev = event_obj.get("event")
                         if ev == "step_update":
+
+                            from datetime import datetime
+                            session.last_activity_at = datetime.utcnow().isoformat()
+                            session.is_stalled = False
+
                             step = event_obj.get("step_update", {})
                             stype = step.get("step_type")
                             sstate = step.get("state")
@@ -449,6 +471,7 @@ class AgentRunnerManager:
                                 tname = step.get("tool_name", "tool")
                                 tinfo = step.get("tool_info", {})
                                 if sstate == "ACTIVE":
+                                    session.current_activity = f"Executing tool: {tname}"
                                     await self._append_message(
                                         session_id,
                                         MessageRole.TOOL_CALL,
@@ -518,3 +541,61 @@ class AgentRunnerManager:
             self._active_agents.pop(session_id, None)
             self._save()
             await self.broadcast("session_updated", session.model_dump())
+
+    async def start_watchdog(self):
+        """Monitors active sessions for hangs or long-running stalled tool executions."""
+        while True:
+            try:
+                await asyncio.sleep(5)
+                from datetime import datetime
+                now = datetime.utcnow()
+                for sid, s in list(self.sessions.items()):
+                    if s.status == AgentStatus.RUNNING:
+                        if s.last_activity_at:
+                            try:
+                                last_time = datetime.fromisoformat(s.last_activity_at)
+                                elapsed = (now - last_time).total_seconds()
+                                if elapsed > 30 and not s.is_stalled:
+                                    s.is_stalled = True
+                                    act_name = s.current_activity or "tool execution"
+                                    s.current_activity = f"⚠️ Unresponsive / Hung on {act_name} ({int(elapsed)}s without output)"
+                                    self._save()
+                                    await self.broadcast("session_updated", s.model_dump())
+                            except Exception:
+                                pass
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in runner watchdog: {e}")
+
+    async def interrupt_agent(self, session_id: str) -> bool:
+        """Interrupts a running or hanging agent execution and leaves it ready for new instructions."""
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+
+        proc = self._active_agents.get(session_id)
+        if proc and hasattr(proc, 'terminate'):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            self._active_agents.pop(session_id, None)
+
+        task = self._tasks.get(session_id)
+        if task and not task.done():
+            task.cancel()
+
+        session.status = AgentStatus.IN_REVIEW
+        session.is_stalled = False
+        session.current_activity = "Interrupted by user. Ready for new input."
+        msg = ConversationMessage(
+            id=str(uuid.uuid4()),
+            role=MessageRole.SYSTEM,
+            content="⏹️ [Agent Execution Interrupted] Process halted safely. Chat remains open and waiting for your instructions."
+        )
+        session.messages.append(msg)
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+        logger.info(f"Agent session {session_id} manually interrupted.")
+        return True

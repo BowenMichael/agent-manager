@@ -1,3 +1,28 @@
+
+// Agent Activity & Stall Tracking
+const agentActivityBar = document.getElementById('agent-activity-bar');
+const activitySpinner = document.getElementById('activity-spinner');
+const activityText = document.getElementById('activity-text');
+const btnInterrupt = document.getElementById('btn-interrupt');
+
+if (btnInterrupt) {
+  btnInterrupt.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    btnInterrupt.disabled = true;
+    btnInterrupt.textContent = 'Interrupting...';
+    try {
+      const res = await fetch(`/api/agents/${activeSessionId}/interrupt`, { method: 'POST' });
+      const data = await res.json();
+      console.log('Interrupted:', data);
+    } catch (err) {
+      alert('Error interrupting agent: ' + err.message);
+    } finally {
+      btnInterrupt.disabled = false;
+      btnInterrupt.textContent = 'Interrupt & Re-prompt';
+    }
+  });
+}
+
 // State
 let sessions = [];
 let activeSessionId = null;
@@ -231,6 +256,31 @@ function selectSession(sessionId) {
 }
 
 function updateActiveSessionView(session) {
+  // Update live activity status & hang indicator
+  if (agentActivityBar && activityText) {
+    if (session.is_stalled) {
+      agentActivityBar.classList.add('stalled');
+      activitySpinner.style.display = 'inline-block';
+      activityText.textContent = session.current_activity || '⚠️ Agent is taking longer than expected. You can type below to re-prompt or click Interrupt.';
+      if (btnInterrupt) btnInterrupt.classList.remove('hidden');
+    } else if (session.status === 'RUNNING') {
+      agentActivityBar.classList.remove('stalled');
+      activitySpinner.style.display = 'inline-block';
+      activityText.textContent = session.current_activity || '🧠 Agent thinking & executing...';
+      if (btnInterrupt) btnInterrupt.classList.add('hidden');
+    } else if (session.status === 'IN_REVIEW') {
+      agentActivityBar.classList.remove('stalled');
+      activitySpinner.style.display = 'none';
+      activityText.textContent = '💬 Turn complete. Waiting for your input or review.';
+      if (btnInterrupt) btnInterrupt.classList.add('hidden');
+    } else {
+      agentActivityBar.classList.remove('stalled');
+      activitySpinner.style.display = 'none';
+      activityText.textContent = `Status: ${session.status}`;
+      if (btnInterrupt) btnInterrupt.classList.add('hidden');
+    }
+  }
+
   currentStatusTag.textContent = session.status;
   currentStatusTag.className = `status-tag ${getStatusBadgeClass(session.status).replace('badge-', 'tag-')}`;
   currentTitle.textContent = session.title;
@@ -511,6 +561,15 @@ btnBannerConfigure.addEventListener('click', () => {
 });
 btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
 btnCancelSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
+
+
+  const settingEffort = document.getElementById('setting-effort');
+  settingModel.addEventListener('change', () => {
+    const val = settingModel.value;
+    if (val.endsWith('-high') && settingEffort) settingEffort.value = 'high';
+    else if (val.endsWith('-medium') && settingEffort) settingEffort.value = 'medium';
+    else if (val.endsWith('-low') && settingEffort) settingEffort.value = 'low';
+  });
 
 btnSaveSettings.addEventListener('click', async () => {
   const selectedMode = document.querySelector('input[name="agy_execution_mode"]:checked')?.value || 'web_stream';

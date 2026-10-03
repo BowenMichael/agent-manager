@@ -54,6 +54,9 @@ class AgentSessionInfo(BaseModel):
     error_message: Optional[str] = None
     agy_mode: str = "terminal"
     terminal_command: Optional[str] = None
+    current_activity: Optional[str] = "IDLE"
+    last_activity_at: Optional[str] = None
+    is_stalled: bool = False
     seen_comment_ids: List[str] = Field(default_factory=list)
     last_issue_body: Optional[str] = None
 
@@ -81,6 +84,7 @@ class SimulateWebhookRequest(BaseModel):
 
 class SettingsUpdateRequest(BaseModel):
     default_model: Optional[str] = None
+    effort_level: Optional[str] = None
     max_session_tokens: Optional[int] = None
     gemini_api_key: Optional[str] = None
     agy_mode: Optional[str] = None
