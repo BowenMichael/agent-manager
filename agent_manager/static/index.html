@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Manager — Antigravity SDK Control Plane</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Top Navigation Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Agent Manager</h1>
+          <span class="brand-subtitle">Google Antigravity SDK • Webhook Dispatcher & Control Plane</span>
+        </div>
+      </div>
+
+      <div class="header-stats">
+        <div class="stat-pill">
+          <span class="stat-label">Active</span>
+          <span class="stat-value active-val" id="stat-active">0</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Completed</span>
+          <span class="stat-value comp-val" id="stat-completed">0</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-label">Tokens</span>
+          <span class="stat-value token-val" id="stat-tokens">0</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="connection-status" id="connection-status">
+          <span class="pulse-dot"></span>
+          <span class="status-text">Connecting...</span>
+        </div>
+        <button class="btn btn-secondary" id="btn-simulate-modal">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          Simulate Webhook
+        </button>
+        <button class="btn btn-primary" id="btn-new-agent-modal">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Launch Agent
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="main-workspace">
+      <!-- Left Sidebar: Active & Recent Agent Sessions -->
+      <aside class="agents-sidebar">
+        <div class="sidebar-header">
+          <h2>Active Sessions</h2>
+          <span class="badge" id="sessions-count">0</span>
+        </div>
+
+        <div class="sessions-list" id="sessions-list">
+          <div class="empty-state" id="sessions-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <p>No agents running yet.</p>
+            <small>Move a GitHub issue to "Ready for Agent" or trigger via Simulate Webhook.</small>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="webhook-info">
+            <span class="webhook-label">Incoming Webhook URL:</span>
+            <div class="webhook-url-box">
+              <code id="webhook-url-display">/api/webhooks/github</code>
+              <button class="btn-copy" id="btn-copy-webhook" title="Copy URL">Copy</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center / Right Panel: Live Agent Console & Interactive Workspace -->
+      <section class="console-panel" id="console-panel">
+        <div class="console-empty" id="console-empty">
+          <div class="console-empty-card">
+            <div class="empty-icon">⚡</div>
+            <h3>Select an Agent Session</h3>
+            <p>Click on an active or past agent from the left sidebar to view its real-time thought stream, tool calls, and conversation history.</p>
+            <div class="quick-hints">
+              <div class="hint-item">
+                <strong>🛑 Stop Agent</strong>: Instantly kill runaway agents or pause tasks.
+              </div>
+              <div class="hint-item">
+                <strong>💬 Context Injection</strong>: Send new feedback straight into a running agent's memory.
+              </div>
+              <div class="hint-item">
+                <strong>🔀 Isolated Worktree</strong>: Each agent runs in its own <code>.worktrees/issue-&lt;id&gt;</code>.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Agent Detailed View -->
+        <div class="console-active hidden" id="console-active">
+          <!-- Session Header & Control Bar -->
+          <div class="session-header">
+            <div class="session-meta">
+              <div class="session-title-row">
+                <span class="status-tag tag-running" id="current-status-tag">RUNNING</span>
+                <h2 id="current-title">Issue #6: Historical Calendar UI</h2>
+              </div>
+              <div class="session-submeta">
+                <span class="submeta-item" id="current-repo">BowenMichael/f1-frontend</span>
+                <span class="submeta-divider">•</span>
+                <span class="submeta-item font-mono" id="current-branch">feat/issue-6</span>
+                <span class="submeta-divider">•</span>
+                <span class="submeta-item" id="current-worktree">.worktrees/issue-6</span>
+              </div>
+            </div>
+
+            <div class="session-controls">
+              <button class="btn btn-danger" id="btn-stop-current">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+                Stop Agent
+              </button>
+            </div>
+          </div>
+
+          <!-- Live Feed Transcript Container -->
+          <div class="transcript-viewport" id="transcript-viewport">
+            <div class="transcript-stream" id="transcript-stream">
+              <!-- Dynamically populated messages, thoughts, and tool cards -->
+            </div>
+            <div class="stream-anchor" id="stream-anchor"></div>
+          </div>
+
+          <!-- Bottom Context Injection Bar -->
+          <div class="context-bar">
+            <div class="context-input-wrapper">
+              <textarea 
+                id="context-input" 
+                placeholder="Inject additional context, instructions, or clarifications into this active agent... (Ctrl+Enter to send)"
+                rows="2"
+              ></textarea>
+              <button class="btn btn-primary btn-send-context" id="btn-send-context">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                Send Context
+              </button>
+            </div>
+            <div class="context-helper">
+              <span>Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to submit instructions directly into agent's active memory.</span>
+              <span id="turn-counter">Turns: 0 • Tokens: 0</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal: Simulate GitHub Webhook -->
+    <div class="modal-overlay hidden" id="modal-simulate">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Simulate GitHub Webhook</h3>
+          <button class="modal-close" id="btn-close-simulate">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc">Simulate an incoming GitHub webhook event as if an issue was just dragged to <code>📋 Ready for Agent</code> on your Project Board.</p>
+          <div class="form-group">
+            <label>Event Type</label>
+            <select id="sim-event-type" class="form-control">
+              <option value="issues">issues (labeled with agent:ready)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Issue Number</label>
+            <input type="number" id="sim-issue-num" class="form-control" value="6">
+          </div>
+          <div class="form-group">
+            <label>Issue Title</label>
+            <input type="text" id="sim-issue-title" class="form-control" value="Milestone 1: Historical Calendar & Session Picker UI">
+          </div>
+          <div class="form-group">
+            <label>Issue Description</label>
+            <textarea id="sim-issue-body" class="form-control" rows="4">Implement GETMeetings OpenF1 middleware integration, Season and Round dropdown selectors, and Grand Prix session card grid with responsive layout.</textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btn-cancel-simulate">Cancel</button>
+          <button class="btn btn-primary" id="btn-submit-simulate">Simulate & Spawn Agent</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Manual Agent Launcher -->
+    <div class="modal-overlay hidden" id="modal-launch">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Launch Autonomous Agent</h3>
+          <button class="modal-close" id="btn-close-launch">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Target Repository</label>
+            <input type="text" id="launch-repo" class="form-control" value="BowenMichael/f1-frontend">
+          </div>
+          <div class="form-group">
+            <label>Issue Number (Optional)</label>
+            <input type="number" id="launch-issue-num" class="form-control" placeholder="e.g. 7">
+          </div>
+          <div class="form-group">
+            <label>Task Instructions / Prompt</label>
+            <textarea id="launch-prompt" class="form-control" rows="5" placeholder="Specify requirements, files to inspect, and acceptance criteria..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btn-cancel-launch">Cancel</button>
+          <button class="btn btn-primary" id="btn-submit-launch">Spawn Agent</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

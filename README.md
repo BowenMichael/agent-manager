@@ -1,59 +1,123 @@
-# 🤖 Agent-Driven Development Starter Blueprint
+# 🚀 Agent Manager
 
-A tech-stack agnostic starter template for orchestrating autonomous AI pair-programming agents using **GitHub Projects (Jira-style Kanban)** and **Model Context Protocol (MCP)**.
+> **Webhook Dispatcher, Live Dashboard & Interactive Control Plane for Google Antigravity Agents**
 
-Works seamlessly with any language or framework: **Next.js, React, Vue, Python (FastAPI/Django), Go, Rust, Ruby, Node, etc.**
-
----
-
-## 📦 What's Included
-
-- **`.github/ISSUE_TEMPLATE/agent_task.md`**: Pre-configured task template enforcing objectives, acceptance criteria, and visual demo verification.
-- **`.github/pull_request_template.md`**: Structured PR template with sections for video demo embeds, before/after screenshots, test logs, and reviewer checklists.
-- **`.github/workflows/agent-task-dispatcher.yml`**: GitHub Actions event runner that auto-acknowledges tasks and supports external webhook forwarding.
-- **`AGENTS.md`**: Production-grade agent rulebook enforcing:
-  - **Git Worktree Isolation**: Agents work strictly in `.worktrees/issue-<#>` to never touch your active editor.
-  - **Token & Budget Guardrail**: Mandatory pause and insights report if a task reaches 15 turns.
-  - **Anti-Duplication**: Board-status driven task pickup and immediate takeover comments.
-- **`mcp_config.template.json`**: Pre-configured MCP configuration for GitHub, Vercel, and deployment integrations.
-- **`setup.js`**: One-click initialization script to create all GitHub labels in any new repository.
+Agent Manager is an orchestration system built on the **Google Antigravity SDK** (`google-antigravity`). It turns GitHub issues and project board transitions into isolated, autonomous AI agent sessions while giving you real-time visibility, graceful stop controls, and live interactive context injection.
 
 ---
 
-## 🚀 Quickstart: Using This Template for Any New Repo
+## 🌟 Key Features
 
-### Step 1: Copy Template Files into Your Repo
-Copy the `.github/`, `AGENTS.md`, and `mcp_config.template.json` files to the root of your project:
+- **🪝 GitHub Webhook Ingestion**: Listens for `issues.labeled` (e.g. `agent:ready`), project board status changes (`📋 Ready for Agent`), and issue comments.
+- **⚡ Antigravity SDK Powered**: Spawns real-time `Agent` instances using `LocalAgentConfig` and `CapabilitiesConfig`.
+- **🔀 Worktree Isolation**: Automatically sets up isolated Git worktrees (`.worktrees/issue-<number>`) so concurrent agents never corrupt branches or main workspace files.
+- **🖥️ Live Web Dashboard**:
+  - Live conversation transcript viewer with streaming tokens.
+  - Collapsible **Thinking & Reasoning** trace panels.
+  - Structured **Tool Execution** cards with input parameters and outcomes.
+- **🛑 One-Click Stop**: Instantly halt runaway or stuck agents safely without orphan processes.
+- **💬 Real-Time Context Injection**: Type new instructions, feedback, or clarifications and inject them directly into an active agent's live memory (`agent.chat()`) via WebSockets.
+- **🧪 Built-in Simulation**: Test webhooks and launch ad-hoc agents directly from the UI without needing external tunnels during local development.
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart TD
+    GH[GitHub Project Board / Issues] -->|Webhook: Ready for Agent| SVR[Agent Manager Server: 8000]
+    SVR -->|Parse Event| DISP[Webhook Dispatcher]
+    DISP -->|Spawn Request| RUNNER[Agent Runner Manager]
+    RUNNER -->|Git Worktree Isolation| WT[.worktrees/issue-X]
+    RUNNER -->|Google Antigravity SDK| AGENT[Antigravity Agent Instance]
+    
+    subgraph Live Control Plane
+        UI[Web Dashboard: /] <-->|WebSocket Stream: /ws/agents| SVR
+        UI -->|Inject Context| AGENT
+        UI -->|Stop Agent| RUNNER
+    end
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+- Python 3.10+
+- Git 2.30+
+- Google Antigravity SDK
+
+### 2. Installation
 ```bash
-cp -r .github/ /path/to/your-new-project/
-cp AGENTS.md /path/to/your-new-project/
-cp mcp_config.template.json /path/to/your-new-project/
+# Clone the repository
+git clone https://github.com/BowenMichael/agent-manager.git
+cd agent-manager
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### Step 2: Run One-Click Label Setup
-Run the setup script with your repository name and GitHub Personal Access Token (PAT):
+### 3. Configuration
+Copy `.env.example` to `.env` and configure your settings:
 ```bash
-node setup.js <your-github-username>/<your-repo-name> <your-github-token>
+cp .env.example .env
 ```
-This automatically registers the workflow labels:
-- 🟢 `agent:ready`
-- 🟡 `agent:in-progress`
-- 🟠 `agent:needs-approval`
-- 🟣 `agent:review`
-
-### Step 3: Configure MCP in Antigravity
-Copy the contents of `mcp_config.template.json` into your global config (`~/.gemini/config/mcp_config.json`) and insert your GitHub PAT.
-
-### Step 4: Launch the Background Scheduler
-In Antigravity chat, trigger your recurring background daemon:
+```env
+PORT=8000
+HOST=0.0.0.0
+GITHUB_PERSONAL_ACCESS_TOKEN=ghp_your_token
+GITHUB_WEBHOOK_SECRET=your_optional_secret
+WORKSPACE_BASE=e:/~Michael Bowen/Projects
+DEFAULT_REPO=BowenMichael/f1-frontend
 ```
-/schedule CronExpression="*/3 * * * *" Prompt="Check repository <owner>/<repo> for items with Status '📋 Ready for Agent'..."
+
+### 4. Launching the Manager
+```bash
+python main.py --port 8000
+```
+Visit **`http://localhost:8000`** in your browser to open the Agent Manager Control Plane!
+
+---
+
+## 🪝 Configuring GitHub Webhooks
+
+1. Go to your GitHub repository (**Settings > Webhooks > Add webhook**).
+2. Set **Payload URL** to:
+   ```text
+   http://<your-host-or-tunnel-url>:8000/api/webhooks/github
+   ```
+3. Set **Content type** to `application/json`.
+4. Under **Which events would you like to trigger this webhook?**, select **Let me select individual events**:
+   - ✅ **Issues** (when labeled `agent:ready` or opened)
+   - ✅ **Issue comments** (injects user comments into active agents)
+   - ✅ **Projects v2 item status** (when cards move to `Ready for Agent`)
+5. Click **Add webhook**.
+
+> **Tip for Local Testing**: If developing locally without a public domain, you can use `smee.io` or `ngrok`, or simply use the **"Simulate Webhook"** button in the dashboard!
+
+---
+
+## 📡 REST & WebSocket API Reference
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/webhooks/github` | `POST` | Ingests incoming GitHub webhook payloads |
+| `/api/webhooks/simulate` | `POST` | Simulates an issue/board webhook locally |
+| `/api/agents` | `GET` | Lists all active and historical agent sessions |
+| `/api/agents/{id}` | `GET` | Returns full session details and message transcript |
+| `/api/agents/spawn` | `POST` | Spawns a new autonomous agent |
+| `/api/agents/{id}/stop` | `POST` | Stops an active agent session immediately |
+| `/api/agents/{id}/context` | `POST` | Injects additional context into a running agent |
+| `/ws/agents` | `WS` | Real-time bi-directional streaming WebSocket |
+
+---
+
+## 🧪 Running Tests
+```bash
+python -m unittest tests/test_manager.py
 ```
 
 ---
 
-## 🔄 Daily Workflow
-1. **Create an Issue** using the `[TASK]` template on GitHub.
-2. **Move to '📋 Ready for Agent'** on your Kanban board.
-3. **Agent Picks Up**: Automatically creates an isolated `.worktrees/issue-<#>`, posts a takeover comment, writes code, and runs tests.
-4. **Review & Approve**: The agent opens a PR with an attached video walkthrough and screenshots, moving the card to `🔍 In Review`.
+## 🛡️ License
+Apache 2.0. Built with Google Antigravity.

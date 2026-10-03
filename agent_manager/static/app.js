@@ -1,0 +1,455 @@
+// State
+let sessions = [];
+let activeSessionId = null;
+let ws = null;
+let currentStreamingBubble = null;
+
+// DOM Elements
+const connectionStatus = document.getElementById('connection-status');
+const sessionsList = document.getElementById('sessions-list');
+const sessionsEmpty = document.getElementById('sessions-empty');
+const sessionsCount = document.getElementById('sessions-count');
+
+const statActive = document.getElementById('stat-active');
+const statCompleted = document.getElementById('stat-completed');
+const statTokens = document.getElementById('stat-tokens');
+
+const consoleEmpty = document.getElementById('console-empty');
+const consoleActive = document.getElementById('console-active');
+
+const currentStatusTag = document.getElementById('current-status-tag');
+const currentTitle = document.getElementById('current-title');
+const currentRepo = document.getElementById('current-repo');
+const currentBranch = document.getElementById('current-branch');
+const currentWorktree = document.getElementById('current-worktree');
+const turnCounter = document.getElementById('turn-counter');
+
+const transcriptViewport = document.getElementById('transcript-viewport');
+const transcriptStream = document.getElementById('transcript-stream');
+const streamAnchor = document.getElementById('stream-anchor');
+
+const contextInput = document.getElementById('context-input');
+const btnSendContext = document.getElementById('btn-send-context');
+const btnStopCurrent = document.getElementById('btn-stop-current');
+
+// Modals
+const modalSimulate = document.getElementById('modal-simulate');
+const btnSimulateModal = document.getElementById('btn-simulate-modal');
+const btnCloseSimulate = document.getElementById('btn-close-simulate');
+const btnCancelSimulate = document.getElementById('btn-cancel-simulate');
+const btnSubmitSimulate = document.getElementById('btn-submit-simulate');
+
+const modalLaunch = document.getElementById('modal-launch');
+const btnNewAgentModal = document.getElementById('btn-new-agent-modal');
+const btnCloseLaunch = document.getElementById('btn-close-launch');
+const btnCancelLaunch = document.getElementById('btn-cancel-launch');
+const btnSubmitLaunch = document.getElementById('btn-submit-launch');
+
+const btnCopyWebhook = document.getElementById('btn-copy-webhook');
+const webhookUrlDisplay = document.getElementById('webhook-url-display');
+
+// Setup Webhook URL display
+webhookUrlDisplay.textContent = `${window.location.origin}/api/webhooks/github`;
+btnCopyWebhook.addEventListener('click', () => {
+  navigator.clipboard.writeText(webhookUrlDisplay.textContent);
+  btnCopyWebhook.textContent = 'Copied!';
+  setTimeout(() => btnCopyWebhook.textContent = 'Copy', 2000);
+});
+
+// WebSocket Connection
+function connectWebSocket() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}/ws/agents`;
+  
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    connectionStatus.classList.add('connected');
+    connectionStatus.querySelector('.status-text').textContent = 'Live Connected';
+    // Start heartbeat
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+    }, 15000);
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      handleWsMessage(msg);
+    } catch (e) {
+      // Ignore pong
+    }
+  };
+
+  ws.onclose = () => {
+    connectionStatus.classList.remove('connected');
+    connectionStatus.querySelector('.status-text').textContent = 'Disconnected • Reconnecting...';
+    setTimeout(connectWebSocket, 3000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+}
+
+function handleWsMessage(msg) {
+  switch (msg.type) {
+    case 'init':
+      sessions = msg.data || [];
+      renderSessionsList();
+      updateStats();
+      if (sessions.length > 0 && !activeSessionId) {
+        selectSession(sessions[0].session_id);
+      }
+      break;
+
+    case 'session_created':
+      sessions.unshift(msg.data);
+      renderSessionsList();
+      updateStats();
+      if (!activeSessionId) {
+        selectSession(msg.data.session_id);
+      }
+      break;
+
+    case 'session_updated':
+      const updatedIdx = sessions.findIndex(s => s.session_id === msg.data.session_id);
+      if (updatedIdx !== -1) {
+        sessions[updatedIdx] = msg.data;
+      } else {
+        sessions.unshift(msg.data);
+      }
+      renderSessionsList();
+      updateStats();
+      if (activeSessionId === msg.data.session_id) {
+        updateActiveSessionView(msg.data);
+      }
+      break;
+
+    case 'message_added':
+      const { session_id, message } = msg.data;
+      const targetSession = sessions.find(s => s.session_id === session_id);
+      if (targetSession) {
+        targetSession.messages.push(message);
+        if (message.role === 'TOOL_CALL') targetSession.turn_count++;
+      }
+      if (activeSessionId === session_id) {
+        currentStreamingBubble = null;
+        renderMessageItem(message);
+        scrollToBottom();
+      }
+      break;
+
+    case 'token_stream':
+      const { session_id: sId, token } = msg.data;
+      const s = sessions.find(s => s.session_id === sId);
+      if (s) s.token_count = (s.token_count || 0) + 1;
+      updateStats();
+
+      if (activeSessionId === sId) {
+        handleTokenStream(token);
+        scrollToBottom();
+      }
+      break;
+  }
+}
+
+function handleTokenStream(token) {
+  if (!currentStreamingBubble) {
+    currentStreamingBubble = document.createElement('div');
+    currentStreamingBubble.className = 'msg-bubble msg-agent';
+    currentStreamingBubble.innerHTML = `<span class="msg-role-tag">AGENT (STREAMING)</span><div class="msg-content"></div>`;
+    transcriptStream.appendChild(currentStreamingBubble);
+  }
+  const contentEl = currentStreamingBubble.querySelector('.msg-content');
+  contentEl.textContent += token;
+}
+
+function updateStats() {
+  const activeCount = sessions.filter(s => s.status === 'RUNNING' || s.status === 'INITIALIZING').length;
+  const compCount = sessions.filter(s => s.status === 'COMPLETED').length;
+  const totalTokens = sessions.reduce((acc, s) => acc + (s.token_count || 0), 0);
+
+  statActive.textContent = activeCount;
+  statCompleted.textContent = compCount;
+  statTokens.textContent = totalTokens;
+  sessionsCount.textContent = sessions.length;
+}
+
+function renderSessionsList() {
+  if (sessions.length === 0) {
+    sessionsEmpty.classList.remove('hidden');
+    return;
+  }
+  sessionsEmpty.classList.add('hidden');
+
+  // Preserve scroll
+  const existingCards = sessionsList.querySelectorAll('.session-card');
+  existingCards.forEach(c => c.remove());
+
+  sessions.forEach(session => {
+    const card = document.createElement('div');
+    card.className = `session-card ${session.session_id === activeSessionId ? 'selected' : ''}`;
+    card.dataset.id = session.session_id;
+
+    const statusBadgeClass = getStatusBadgeClass(session.status);
+
+    card.innerHTML = `
+      <div class="card-top">
+        <span class="card-status-badge ${statusBadgeClass}">${session.status}</span>
+        <span class="card-time">${formatTime(session.started_at)}</span>
+      </div>
+      <div class="card-title">${escapeHtml(session.title)}</div>
+      <div class="card-bottom">
+        <span>${session.issue_number ? '#' + session.issue_number : 'ad-hoc'}</span>
+        <span>${session.turn_count || 0} turns • ${session.token_count || 0} tok</span>
+      </div>
+    `;
+
+    card.addEventListener('click', () => selectSession(session.session_id));
+    sessionsList.appendChild(card);
+  });
+}
+
+function selectSession(sessionId) {
+  activeSessionId = sessionId;
+  currentStreamingBubble = null;
+
+  document.querySelectorAll('.session-card').forEach(c => {
+    c.classList.toggle('selected', c.dataset.id === sessionId);
+  });
+
+  const session = sessions.find(s => s.session_id === sessionId);
+  if (!session) return;
+
+  consoleEmpty.classList.add('hidden');
+  consoleActive.classList.remove('hidden');
+
+  updateActiveSessionView(session);
+  renderTranscript(session);
+}
+
+function updateActiveSessionView(session) {
+  currentStatusTag.textContent = session.status;
+  currentStatusTag.className = `status-tag ${getStatusBadgeClass(session.status).replace('badge-', 'tag-')}`;
+  currentTitle.textContent = session.title;
+  currentRepo.textContent = session.repo;
+  currentBranch.textContent = session.git_branch || 'main';
+  currentWorktree.textContent = session.worktree_path ? session.worktree_path.split(/[\\/]/).slice(-2).join('/') : 'in-repo';
+  turnCounter.textContent = `Turns: ${session.turn_count || 0} • Tokens: ${session.token_count || 0}`;
+
+  btnStopCurrent.disabled = (session.status === 'STOPPED' || session.status === 'COMPLETED' || session.status === 'FAILED');
+}
+
+function renderTranscript(session) {
+  transcriptStream.innerHTML = '';
+  session.messages.forEach(msg => {
+    renderMessageItem(msg);
+  });
+  scrollToBottom();
+}
+
+function renderMessageItem(msg) {
+  const bubble = document.createElement('div');
+  
+  if (msg.role === 'USER') {
+    bubble.className = 'msg-bubble msg-user';
+    bubble.innerHTML = `<span class="msg-role-tag">USER CONTEXT</span>${formatContent(msg.content)}`;
+  } else if (msg.role === 'AGENT') {
+    bubble.className = 'msg-bubble msg-agent';
+    bubble.innerHTML = `<span class="msg-role-tag">AGENT RESPONSE</span>${formatContent(msg.content)}`;
+  } else if (msg.role === 'THOUGHT') {
+    bubble.className = 'msg-bubble msg-thought';
+    bubble.innerHTML = `<span class="msg-role-tag">THINKING TRACE</span>${formatContent(msg.content)}`;
+  } else if (msg.role === 'TOOL_CALL') {
+    bubble.className = 'msg-tool';
+    bubble.innerHTML = `
+      <div class="tool-header">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span>TOOL EXECUTION: ${escapeHtml(msg.tool_name || 'tool')}</span>
+      </div>
+      <div class="tool-args">${escapeHtml(msg.content)}</div>
+    `;
+  } else if (msg.role === 'SYSTEM') {
+    bubble.className = 'msg-bubble msg-system';
+    bubble.innerHTML = `<strong>SYSTEM:</strong> ${escapeHtml(msg.content)}`;
+  }
+
+  transcriptStream.appendChild(bubble);
+}
+
+function scrollToBottom() {
+  transcriptViewport.scrollTop = transcriptViewport.scrollHeight;
+}
+
+// Action: Stop Current Agent
+btnStopCurrent.addEventListener('click', async () => {
+  if (!activeSessionId) return;
+  if (!confirm('Are you sure you want to stop this agent? Execution will halt immediately.')) return;
+
+  btnStopCurrent.disabled = true;
+  btnStopCurrent.textContent = 'Stopping...';
+
+  try {
+    const res = await fetch(`/api/agents/${activeSessionId}/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'Stopped manually from UI Control Plane' })
+    });
+    const data = await res.json();
+    console.log(data);
+  } catch (err) {
+    alert('Failed to stop agent: ' + err.message);
+  } finally {
+    btnStopCurrent.textContent = 'Stop Agent';
+  }
+});
+
+// Action: Inject Context
+async function sendContext() {
+  const text = contextInput.value.trim();
+  if (!text || !activeSessionId) return;
+
+  btnSendContext.disabled = true;
+  btnSendContext.textContent = 'Sending...';
+
+  try {
+    const res = await fetch(`/api/agents/${activeSessionId}/context`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: text })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Failed to inject context');
+    }
+    contextInput.value = '';
+  } catch (err) {
+    alert('Error injecting context: ' + err.message);
+  } finally {
+    btnSendContext.disabled = false;
+    btnSendContext.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Context`;
+  }
+}
+
+btnSendContext.addEventListener('click', sendContext);
+contextInput.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 'Enter') {
+    e.preventDefault();
+    sendContext();
+  }
+});
+
+// Modal Logic: Simulate Webhook
+btnSimulateModal.addEventListener('click', () => modalSimulate.classList.remove('hidden'));
+btnCloseSimulate.addEventListener('click', () => modalSimulate.classList.add('hidden'));
+btnCancelSimulate.addEventListener('click', () => modalSimulate.classList.add('hidden'));
+
+btnSubmitSimulate.addEventListener('click', async () => {
+  const issueNum = parseInt(document.getElementById('sim-issue-num').value) || 6;
+  const issueTitle = document.getElementById('sim-issue-title').value;
+  const issueBody = document.getElementById('sim-issue-body').value;
+
+  btnSubmitSimulate.disabled = true;
+  btnSubmitSimulate.textContent = 'Simulating...';
+
+  try {
+    const res = await fetch('/api/webhooks/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event_type: 'issues',
+        action: 'labeled',
+        label: 'agent:ready',
+        issue_number: issueNum,
+        issue_title: issueTitle,
+        issue_body: issueBody,
+        repo: 'BowenMichael/f1-frontend'
+      })
+    });
+    const data = await res.json();
+    modalSimulate.classList.add('hidden');
+    if (data.session) {
+      selectSession(data.session.session_id);
+    }
+  } catch (err) {
+    alert('Failed to simulate webhook: ' + err.message);
+  } finally {
+    btnSubmitSimulate.disabled = false;
+    btnSubmitSimulate.textContent = 'Simulate & Spawn Agent';
+  }
+});
+
+// Modal Logic: Manual Launch Agent
+btnNewAgentModal.addEventListener('click', () => modalLaunch.classList.remove('hidden'));
+btnCloseLaunch.addEventListener('click', () => modalLaunch.classList.add('hidden'));
+btnCancelLaunch.addEventListener('click', () => modalLaunch.classList.add('hidden'));
+
+btnSubmitLaunch.addEventListener('click', async () => {
+  const repo = document.getElementById('launch-repo').value;
+  const issueNumVal = document.getElementById('launch-issue-num').value;
+  const prompt = document.getElementById('launch-prompt').value.trim();
+
+  if (!prompt) {
+    alert('Please enter task instructions or prompt');
+    return;
+  }
+
+  btnSubmitLaunch.disabled = true;
+  btnSubmitLaunch.textContent = 'Spawning...';
+
+  try {
+    const res = await fetch('/api/agents/spawn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repo: repo,
+        issue_number: issueNumVal ? parseInt(issueNumVal) : null,
+        prompt: prompt
+      })
+    });
+    const session = await res.json();
+    modalLaunch.classList.add('hidden');
+    selectSession(session.session_id);
+  } catch (err) {
+    alert('Failed to launch agent: ' + err.message);
+  } finally {
+    btnSubmitLaunch.disabled = false;
+    btnSubmitLaunch.textContent = 'Spawn Agent';
+  }
+});
+
+// Utility Helpers
+function getStatusBadgeClass(status) {
+  switch (status) {
+    case 'RUNNING': return 'badge-running';
+    case 'COMPLETED': return 'badge-completed';
+    case 'STOPPED': return 'badge-stopped';
+    case 'PAUSED': return 'badge-paused';
+    default: return 'badge-paused';
+  }
+}
+
+function formatTime(isoStr) {
+  if (!isoStr) return '';
+  const date = new Date(isoStr);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+}
+
+function formatContent(str) {
+  if (!str) return '';
+  // Basic markdown-like line break and code escaping
+  return escapeHtml(str).replace(/\n/g, '<br>');
+}
+
+// Initial Boot
+connectWebSocket();

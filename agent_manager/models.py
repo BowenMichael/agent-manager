@@ -1,0 +1,67 @@
+from enum import Enum
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+class AgentStatus(str, Enum):
+    IDLE = "IDLE"
+    INITIALIZING = "INITIALIZING"
+    RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
+    STOPPED = "STOPPED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+class MessageRole(str, Enum):
+    USER = "USER"
+    AGENT = "AGENT"
+    THOUGHT = "THOUGHT"
+    TOOL_CALL = "TOOL_CALL"
+    TOOL_RESULT = "TOOL_RESULT"
+    SYSTEM = "SYSTEM"
+
+class ConversationMessage(BaseModel):
+    id: str
+    role: MessageRole
+    content: str
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    tool_name: Optional[str] = None
+    tool_args: Optional[Dict[str, Any]] = None
+    tool_output: Optional[str] = None
+
+class AgentSessionInfo(BaseModel):
+    session_id: str
+    repo: str
+    issue_number: Optional[int] = None
+    title: str
+    status: AgentStatus = AgentStatus.INITIALIZING
+    worktree_path: Optional[str] = None
+    git_branch: Optional[str] = None
+    started_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    turn_count: int = 0
+    token_count: int = 0
+    messages: List[ConversationMessage] = []
+    error_message: Optional[str] = None
+
+class SpawnRequest(BaseModel):
+    repo: Optional[str] = None
+    issue_number: Optional[int] = None
+    title: Optional[str] = None
+    prompt: str
+    worktree_branch: Optional[str] = None
+
+class AddContextRequest(BaseModel):
+    context: str
+
+class StopAgentRequest(BaseModel):
+    reason: Optional[str] = "Stopped by user via Agent Manager UI"
+
+class SimulateWebhookRequest(BaseModel):
+    event_type: str = "issues"
+    action: str = "labeled"
+    label: str = "agent:ready"
+    issue_number: int = 6
+    issue_title: str = "Milestone 1: Historical Calendar & Session Picker UI"
+    issue_body: str = "Implement GETMeetings OpenF1 middleware integration, Season and Round dropdown selectors, and Grand Prix session card grid."
+    repo: str = "BowenMichael/f1-frontend"

@@ -1,0 +1,133 @@
+import logging
+from pathlib import Path
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+from agent_manager.config import STATIC_DIR
+from agent_manager.models import (
+    SpawnRequest, AddContextRequest, StopAgentRequest,
+    SimulateWebhookRequest, AgentSessionInfo
+)
+from agent_manager.runner import AgentRunnerManager
+from agent_manager.webhooks import router as webhooks_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("agent_manager.server")
+
+app = FastAPI(
+    title="Agent Manager",
+    description="Webhook Dispatcher & Live Control Plane for Google Antigravity Agents",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+runner = AgentRunnerManager()
+app.include_router(webhooks_router)
+
+# REST Endpoints
+@app.get("/api/agents", response_model=list[AgentSessionInfo])
+async def list_agents():
+    return runner.list_sessions()
+
+@app.get("/api/agents/{session_id}", response_model=AgentSessionInfo)
+async def get_agent(session_id: str):
+    session = runner.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return session
+
+@app.post("/api/agents/spawn", response_model=AgentSessionInfo)
+async def spawn_agent(req: SpawnRequest):
+    return await runner.spawn_agent(req)
+
+@app.post("/api/agents/{session_id}/stop")
+async def stop_agent(session_id: str, req: StopAgentRequest = StopAgentRequest()):
+    success = await runner.stop_agent(session_id, req.reason or "Stopped via UI")
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": f"Agent {session_id} stopped"}
+
+@app.post("/api/agents/{session_id}/context")
+async def add_context(session_id: str, req: AddContextRequest):
+    if not req.context.strip():
+        raise HTTPException(status_code=400, detail="Context cannot be empty")
+    success = await runner.add_context(session_id, req.context)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": "Context injected successfully"}
+
+@app.post("/api/webhooks/simulate")
+async def simulate_webhook(req: SimulateWebhookRequest):
+    """Simulates a GitHub Webhook event payload for local testing."""
+    if req.event_type == "issues":
+        mock_payload = {
+            "action": req.action,
+            "issue": {
+                "number": req.issue_number,
+                "title": req.issue_title,
+                "body": req.issue_body,
+                "labels": [{"name": req.label}]
+            },
+            "repository": {
+                "full_name": req.repo
+            }
+        }
+        prompt = (
+            f"You have been assigned to GitHub Issue #{req.issue_number} in {req.repo}.\n\n"
+            f"**Title**: {req.issue_title}\n\n"
+            f"**Requirements / Description**:\n{req.issue_body}\n\n"
+            f"**Operational Guidelines**:\n"
+            f"- Work inside the designated branch and isolated worktree.\n"
+            f"- Inspect existing code patterns before modifying.\n"
+            f"- Follow AGENTS.md rules and keep documentation updated.\n"
+            f"- When done, commit changes, open a pull request, and summarize your work."
+        )
+        spawn_req = SpawnRequest(
+            repo=req.repo,
+            issue_number=req.issue_number,
+            title=req.issue_title,
+            prompt=prompt
+        )
+        session = await runner.spawn_agent(spawn_req)
+        return {"status": "ok", "simulated": True, "session": session}
+
+    raise HTTPException(status_code=400, detail=f"Unsupported simulation event type: {req.event_type}")
+
+# WebSocket for Real-Time Streaming
+@app.websocket("/ws/agents")
+async def websocket_agents(websocket: WebSocket):
+    await websocket.accept()
+    runner.register_ws(websocket)
+    try:
+        # Send current state immediately on connect
+        sessions_data = [s.model_dump() for s in runner.list_sessions()]
+        await websocket.send_json({"type": "init", "data": sessions_data})
+        while True:
+            # Keep socket alive and allow client to send ping or commands
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        runner.unregister_ws(websocket)
+    except Exception:
+        runner.unregister_ws(websocket)
+
+# Mount Static UI Dashboard
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(STATIC_DIR / "index.html")
