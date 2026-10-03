@@ -1,0 +1,41 @@
+name: Agent Task Webhook & Dispatcher
+
+on:
+  issues:
+    types: [opened, labeled, assigned]
+
+jobs:
+  agent-trigger:
+    if: contains(github.event.issue.labels.*.name, 'agent:ready') || github.event.action == 'assigned'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log Issue Event
+        run: |
+          echo "Task detected: #${{ github.event.issue.number }} - ${{ github.event.issue.title }}"
+          echo "Triggered by action: ${{ github.event.action }}"
+
+      - name: Dispatch Webhook (Optional External Receiver)
+        if: env.AGENT_WEBHOOK_URL != ''
+        env:
+          AGENT_WEBHOOK_URL: ${{ secrets.AGENT_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+            -d '{
+              "event": "agent_task",
+              "action": "${{ github.event.action }}",
+              "issue_number": ${{ github.event.issue.number }},
+              "title": "${{ github.event.issue.title }}",
+              "html_url": "${{ github.event.issue.html_url }}"
+            }' \
+            "$AGENT_WEBHOOK_URL"
+
+      - name: Add Acknowledgment Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 **Agent Task Registered**\n\nThis task is queued for autonomous agent development. Once work is complete, a pull request will be opened linking to this issue with test verification and recordings.'
+            })
