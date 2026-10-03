@@ -511,13 +511,19 @@ btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hi
 btnCancelSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
 
 btnSaveSettings.addEventListener('click', async () => {
-  const selectedMode = document.querySelector('input[name="agy_execution_mode"]:checked')?.value || 'terminal';
+  const selectedMode = document.querySelector('input[name="agy_execution_mode"]:checked')?.value || 'web_stream';
+  const selectedModel = document.getElementById('select-default-model')?.value || 'gemini-3.1-pro-high';
+  const maxTokens = parseInt(document.getElementById('input-max-tokens')?.value || '150000', 10);
   const key = inputGeminiKey.value.trim();
 
   btnSaveSettings.disabled = true;
   btnSaveSettings.textContent = 'Saving...';
   try {
-    const payload = { agy_mode: selectedMode };
+    const payload = {
+      agy_mode: selectedMode,
+      default_model: selectedModel,
+      max_session_tokens: maxTokens
+    };
     if (key) {
       payload.gemini_api_key = key;
     }
@@ -771,6 +777,41 @@ function updateOverviewPanel(session) {
   if (elThinkingToks) elThinkingToks.textContent = formatTokens(thinkingToks);
   if (elDuration) elDuration.textContent = formatDuration(duration);
 
+  // Quota percentage and limit tracking
+  const maxTokens = session.max_tokens || 150000;
+  const pct = Math.min(100, Math.round(((totalToks / maxTokens) * 100) * 10) / 10);
+  const elQuotaPct = document.getElementById('usage-quota-percent');
+  const elQuotaFill = document.getElementById('usage-quota-fill');
+  const elTokensRatio = document.getElementById('usage-tokens-ratio');
+  const elQuotaStatus = document.getElementById('usage-quota-status');
+
+  if (elQuotaPct) elQuotaPct.textContent = pct + '%';
+  if (elTokensRatio) elTokensRatio.textContent = `${totalToks.toLocaleString()} / ${maxTokens.toLocaleString()} tokens`;
+
+  if (elQuotaFill) {
+    elQuotaFill.style.width = pct + '%';
+    if (pct >= 90) {
+      elQuotaFill.className = 'quota-bar-fill danger';
+      if (elQuotaStatus) { elQuotaStatus.textContent = 'CRITICAL / LIMIT'; elQuotaStatus.style.color = 'var(--accent-red)'; }
+    } else if (pct >= 70) {
+      elQuotaFill.className = 'quota-bar-fill warning';
+      if (elQuotaStatus) { elQuotaStatus.textContent = 'HIGH'; elQuotaStatus.style.color = 'var(--accent-amber)'; }
+    } else {
+      elQuotaFill.className = 'quota-bar-fill';
+      if (elQuotaStatus) { elQuotaStatus.textContent = 'HEALTHY'; elQuotaStatus.style.color = 'var(--accent-green)'; }
+    }
+  }
+
+  // Handle Resume button visibility
+  const btnResume = document.getElementById('btn-resume-current');
+  if (btnResume) {
+    if (session.status === 'PAUSED') {
+      btnResume.classList.remove('hidden');
+    } else {
+      btnResume.classList.add('hidden');
+    }
+  }
+
   // 5. Recent Actions Feed
   const actionsList = document.getElementById('recent-actions-list');
   if (actionsList) {
@@ -786,4 +827,26 @@ function updateOverviewPanel(session) {
       });
     }
   }
+}
+
+
+// Resume Agent button
+const btnResumeCurrent = document.getElementById('btn-resume-current');
+if (btnResumeCurrent) {
+  btnResumeCurrent.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    try {
+      btnResumeCurrent.disabled = true;
+      btnResumeCurrent.textContent = 'Resuming...';
+      const res = await fetch(`/api/agents/${activeSessionId}/resume`, { method: 'POST' });
+      const data = await res.json();
+      setTimeout(() => {
+        btnResumeCurrent.disabled = false;
+        btnResumeCurrent.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Resume';
+      }, 1000);
+    } catch (e) {
+      alert('Could not resume agent: ' + e.message);
+      btnResumeCurrent.disabled = false;
+    }
+  });
 }

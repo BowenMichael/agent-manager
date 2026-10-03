@@ -38,3 +38,13 @@ AGY_CLI_PATH = Path(os.environ.get("LOCALAPPDATA", r"C:\Users\tv\AppData\Local")
 
 # Antigravity CLI Execution Mode: 'terminal' (Default Option 1) or 'web_stream' (Override Option 2)
 AGY_MODE = os.getenv("AGY_MODE", "terminal").lower()
+
+MAX_SESSION_TOKENS = int(os.getenv("MAX_SESSION_TOKENS", "150000"))
+
+AVAILABLE_MODELS = [
+    {"id": "gemini-3.1-pro-high", "name": "Gemini 3.1 Pro (High Reasoning)", "type": "Antigravity Subscription"},
+    {"id": "gemini-3.8-flash-high", "name": "Gemini 3.8 Flash (High Speed)", "type": "Antigravity Subscription"},
+    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (Thinking)", "type": "Antigravity Subscription"},
+    {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro (Google AI Studio)", "type": "Gemini API Key"},
+    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash (Google AI Studio)", "type": "Gemini API Key"},
+]

@@ -184,6 +184,7 @@ class AgentRunnerManager:
         return True
 
     async def add_context(self, session_id: str, context: str) -> bool:
+        """Injects user response / instructions into the agent and ensures immediate execution."""
         session = self.sessions.get(session_id)
         if not session:
             return False
@@ -201,11 +202,23 @@ class AgentRunnerManager:
         queue = self._context_queues.get(session_id)
         if queue:
             await queue.put(context)
-            if session.status in [AgentStatus.PAUSED, AgentStatus.COMPLETED]:
-                session.status = AgentStatus.RUNNING
-                await self.broadcast("session_updated", session.model_dump())
-            return True
-        return False
+
+        # Check if background task is actively running
+        task = self._tasks.get(session_id)
+        if not task or task.done():
+            logger.info(f"Session {session_id} was idle/done; waking up agent with continuation turn for new user message.")
+            session.status = AgentStatus.RUNNING
+            session.error_message = None
+            await self.broadcast("session_updated", session.model_dump())
+            new_task = asyncio.create_task(
+                self._run_agent_loop(session_id, context, session.worktree_path, is_continuation=True)
+            )
+            self._tasks[session_id] = new_task
+        else:
+            session.status = AgentStatus.RUNNING
+            await self.broadcast("session_updated", session.model_dump())
+
+        return True
 
     async def _append_message(self, session_id: str, role: MessageRole, content: str, tool_name: Optional[str] = None, tool_args: Optional[dict] = None) -> ConversationMessage:
         session = self.sessions[session_id]
@@ -227,11 +240,11 @@ class AgentRunnerManager:
         session.token_count += 1
         await self.broadcast("token_stream", {"session_id": session_id, "token": token})
 
-    async def _run_agent_loop(self, session_id: str, initial_prompt: str, worktree_path: Optional[str]):
+    async def _run_agent_loop(self, session_id: str, initial_prompt: str, worktree_path: Optional[str], is_continuation: bool = False):
         session = self.sessions[session_id]
         try:
             session.status = AgentStatus.RUNNING
-            from agent_manager.config import AGY_CLI_PATH, AGY_MODE
+            from agent_manager.config import AGY_CLI_PATH, AGY_MODE, MAX_SESSION_TOKENS
             cwd_dir = worktree_path or str(WORKSPACE_BASE)
             issue_num = session.issue_number or 0
             branch_name = session.git_branch or f"feat/issue-{issue_num}"
@@ -308,11 +321,18 @@ class AgentRunnerManager:
                 )
                 await self.broadcast("session_updated", session.model_dump())
 
-                proc = await asyncio.create_subprocess_exec(
+                cmd_args = [
                     str(AGY_CLI_PATH),
                     "--dangerously-skip-permissions",
-                    "--output-format", "stream-json",
-                    "-p", agy_prompt,
+                    "--output-format", "stream-json"
+                ]
+                if is_continuation:
+                    cmd_args.extend(["--continue", "-p", initial_prompt])
+                else:
+                    cmd_args.extend(["-p", agy_prompt])
+
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd_args,
                     cwd=str(cwd_dir),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
@@ -344,6 +364,24 @@ class AgentRunnerManager:
                                 session.cache_read_tokens = usage.get("cache_read_tokens", session.cache_read_tokens)
                                 session.total_tokens = usage.get("total_tokens", session.total_tokens)
                                 session.token_count = session.total_tokens
+                                session.quota_percent = min(100.0, round((session.total_tokens / MAX_SESSION_TOKENS) * 100, 1))
+
+                                # TOKEN LIMIT GUARDRAIL
+                                if session.total_tokens >= MAX_SESSION_TOKENS:
+                                    session.status = AgentStatus.PAUSED
+                                    session.error_message = f"Token budget limit reached ({session.total_tokens:,} / {MAX_SESSION_TOKENS:,} tokens)."
+                                    await self._append_message(
+                                        session_id,
+                                        MessageRole.SYSTEM,
+                                        f"⚠️ [Token Budget Guardrail] Reached 100% of session quota ({session.total_tokens:,} tokens). "
+                                        f"Agent execution safely paused without losing work. All changes in {cwd_dir} preserved. "
+                                        f"You can click 'Resume' or raise your limit in Settings."
+                                    )
+                                    if proc.returncode is None:
+                                        proc.terminate()
+                                    await self.broadcast("session_updated", session.model_dump())
+                                    return
+
                                 await self.broadcast("session_updated", session.model_dump())
 
                             if "duration_seconds" in step:

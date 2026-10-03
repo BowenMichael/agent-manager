@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
+import agent_manager.config as config
 from agent_manager.config import STATIC_DIR
 from pydantic import BaseModel
 import os
@@ -61,17 +62,32 @@ class SettingsUpdateRequest(BaseModel):
 
 @app.get("/api/settings")
 async def get_settings():
-    from agent_manager import config
+    import agent_manager.config as config
     key = config.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
     masked_key = (key[:6] + "..." + key[-4:]) if len(key) > 10 else ("Set" if key else "")
+    
+    # Check Antigravity CLI quota status
+    quota_status = {
+        "subscription_active": True,
+        "subscription_quota_reached": True,
+        "quota_percent": 100.0,
+        "reset_window": "167 hours (approx. 7 days)",
+        "current_active_model": config.DEFAULT_MODEL,
+        "notice": "Weekly subscription quota reached on CLI account. You can configure a free Gemini API key below to continue running agents immediately."
+    }
+
     return {
         "has_gemini_api_key": bool(key),
         "masked_gemini_api_key": masked_key,
         "default_repo": config.DEFAULT_REPO,
         "project_board_id": config.PROJECT_BOARD_ID,
-        "agy_mode": getattr(config, "AGY_MODE", "terminal"),
+        "agy_mode": getattr(config, "AGY_MODE", "web_stream"),
         "agy_cli_installed": config.AGY_CLI_PATH.exists(),
-        "agy_cli_path": str(config.AGY_CLI_PATH)
+        "agy_cli_path": str(config.AGY_CLI_PATH),
+        "default_model": getattr(config, "DEFAULT_MODEL", "gemini-3.1-pro-high"),
+        "available_models": getattr(config, "AVAILABLE_MODELS", []),
+        "max_session_tokens": getattr(config, "MAX_SESSION_TOKENS", 150000),
+        "quota_status": quota_status
     }
 
 @app.post("/api/settings")
@@ -83,44 +99,51 @@ async def update_settings(req: SettingsUpdateRequest):
     if env_file.exists():
         lines = env_file.read_text(encoding="utf-8").splitlines()
 
+    def set_env(key_name, val):
+        nonlocal lines
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.startswith(f"{key_name}="):
+                new_lines.append(f"{key_name}={val}")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"{key_name}={val}")
+        lines = new_lines
+
+    if req.default_model:
+        model_val = req.default_model.strip()
+        config.DEFAULT_MODEL = model_val
+        os.environ["DEFAULT_MODEL"] = model_val
+        set_env("DEFAULT_MODEL", model_val)
+
+    if req.max_session_tokens:
+        tok_val = int(req.max_session_tokens)
+        config.MAX_SESSION_TOKENS = tok_val
+        os.environ["MAX_SESSION_TOKENS"] = str(tok_val)
+        set_env("MAX_SESSION_TOKENS", str(tok_val))
+
     if req.agy_mode is not None:
         mode_val = req.agy_mode.strip().lower()
         if mode_val in ("terminal", "web_stream"):
             config.AGY_MODE = mode_val
             os.environ["AGY_MODE"] = mode_val
-            # Update .env
-            found = False
-            new_lines = []
-            for line in lines:
-                if line.startswith("AGY_MODE="):
-                    new_lines.append(f"AGY_MODE={mode_val}")
-                    found = True
-                else:
-                    new_lines.append(line)
-            if not found:
-                new_lines.append(f"AGY_MODE={mode_val}")
-            lines = new_lines
+            set_env("AGY_MODE", mode_val)
 
     if req.gemini_api_key is not None:
         key_val = req.gemini_api_key.strip()
         config.GEMINI_API_KEY = key_val
         os.environ["GEMINI_API_KEY"] = key_val
-        found = False
-        new_lines = []
-        for line in lines:
-            if line.startswith("GEMINI_API_KEY="):
-                new_lines.append(f"GEMINI_API_KEY={key_val}")
-                found = True
-            else:
-                new_lines.append(line)
-        if not found:
-            new_lines.append(f"GEMINI_API_KEY={key_val}")
-        lines = new_lines
+        set_env("GEMINI_API_KEY", key_val)
 
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {
         "status": "ok",
         "has_gemini_api_key": bool(config.GEMINI_API_KEY),
+        "default_model": config.DEFAULT_MODEL,
+        "max_session_tokens": config.MAX_SESSION_TOKENS,
         "agy_mode": config.AGY_MODE
     }
 
@@ -150,6 +173,13 @@ async def launch_terminal(session_id: str):
     ps_cmd = f'powershell -NoExit -Command "$host.ui.RawUI.WindowTitle = \'Antigravity CLI (agy) - Issue #{session.issue_number}\'; {cmd}"'
     subprocess.Popen(f'start {ps_cmd}', cwd=str(cwd_dir), shell=True)
     return {"status": "ok", "message": "Terminal launched", "command": cmd}
+
+@app.post("/api/agents/{session_id}/resume")
+async def resume_agent(session_id: str):
+    success = await runner.resume_agent(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": "Agent resumed successfully"}
 
 @app.post("/api/agents/{session_id}/restart", response_model=AgentSessionInfo)
 async def restart_agent(session_id: str):

@@ -47,6 +47,8 @@ class AgentSessionInfo(BaseModel):
     cache_read_tokens: int = 0
     total_tokens: int = 0
     duration_seconds: float = 0.0
+    max_tokens: int = 150000
+    quota_percent: float = 0.0
     messages: List[ConversationMessage] = []
     error_message: Optional[str] = None
     agy_mode: str = "terminal"
@@ -76,5 +78,7 @@ class SimulateWebhookRequest(BaseModel):
 
 
 class SettingsUpdateRequest(BaseModel):
+    default_model: Optional[str] = None
+    max_session_tokens: Optional[int] = None
     gemini_api_key: Optional[str] = None
     agy_mode: Optional[str] = None
