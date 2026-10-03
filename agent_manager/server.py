@@ -29,6 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agent_manager.server")
 
+from agent_manager.cron_dispatcher import dispatcher
+
 watcher = LocalGitWatcher()
 
 @asynccontextmanager
@@ -36,9 +38,12 @@ async def lifespan(app: FastAPI):
     # Startup: Start local Git board watcher
     watcher.start()
     asyncio.create_task(runner.start_watchdog())
+    # Startup: Start autonomous backlog cron dispatcher (starts in ~23 mins, then every 10 mins)
+    asyncio.create_task(dispatcher.start(initial_delay_seconds=1374, interval_seconds=600))
     yield
-    # Shutdown: Stop watcher
+    # Shutdown: Stop watcher and cron dispatcher
     watcher.stop()
+    dispatcher.stop()
 
 app = FastAPI(
     title="Agent Manager",
@@ -196,7 +201,18 @@ async def update_settings(req: SettingsUpdateRequest):
     await runner.broadcast("settings_updated", result)
     return result
 
+@app.get("/api/cron/status")
+async def get_cron_status():
+    return {
+        "is_running": dispatcher.is_running,
+        "last_run_at": dispatcher.last_run_at,
+        "next_run_at": dispatcher.next_run_at,
+        "history": dispatcher.dispatch_history[-10:]
+    }
 
+@app.post("/api/cron/dispatch-now")
+async def trigger_cron_dispatch():
+    return await dispatcher.check_and_dispatch()
 
 @app.get("/api/agents", response_model=list[AgentSessionInfo])
 async def list_agents():
