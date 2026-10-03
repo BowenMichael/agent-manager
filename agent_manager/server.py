@@ -59,6 +59,8 @@ class SettingsUpdateRequest(BaseModel):
     gemini_api_key: Optional[str] = None
     default_repo: Optional[str] = None
     agy_mode: Optional[str] = None
+    default_model: Optional[str] = None
+    max_session_tokens: Optional[int] = None
 
 @app.get("/api/settings")
 async def get_settings():
