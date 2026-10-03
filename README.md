@@ -112,6 +112,13 @@ Visit **`http://localhost:8000`** in your browser to open the Agent Manager Cont
 
 ---
 
+## 🗺️ Cloud Hosting & Cross-Platform Roadmap
+
+For cloud deployment plans (Render), database migration, and cross-platform mobile/web control via Expo (React Native), see:
+- 📖 [Hosting & Expo Architecture Plan](docs/hosting_and_expo_plan.md)
+
+---
+
 ## 🧪 Running Tests
 ```bash
 python -m unittest tests/test_manager.py
@@ -121,3 +128,4 @@ python -m unittest tests/test_manager.py
 
 ## 🛡️ License
 Apache 2.0. Built with Google Antigravity.
+
