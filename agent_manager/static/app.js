@@ -480,42 +480,74 @@ contextInput.addEventListener('keydown', (e) => {
 });
 
 // Modal Logic: Simulate Webhook
+const simEventType = document.getElementById('sim-event-type');
+const simGroupTitle = document.getElementById('sim-group-title');
+const simGroupBody = document.getElementById('sim-group-body');
+const simGroupComment = document.getElementById('sim-group-comment');
+
+if (simEventType) {
+  simEventType.addEventListener('change', () => {
+    if (simEventType.value === 'issue_comment') {
+      if (simGroupTitle) simGroupTitle.classList.add('hidden');
+      if (simGroupBody) simGroupBody.classList.add('hidden');
+      if (simGroupComment) simGroupComment.classList.remove('hidden');
+    } else {
+      if (simGroupTitle) simGroupTitle.classList.remove('hidden');
+      if (simGroupBody) simGroupBody.classList.remove('hidden');
+      if (simGroupComment) simGroupComment.classList.add('hidden');
+    }
+  });
+}
+
 btnSimulateModal.addEventListener('click', () => modalSimulate.classList.remove('hidden'));
 btnCloseSimulate.addEventListener('click', () => modalSimulate.classList.add('hidden'));
 btnCancelSimulate.addEventListener('click', () => modalSimulate.classList.add('hidden'));
 
 btnSubmitSimulate.addEventListener('click', async () => {
+  const eventType = simEventType ? simEventType.value : 'issues';
   const issueNum = parseInt(document.getElementById('sim-issue-num').value) || 6;
   const issueTitle = document.getElementById('sim-issue-title').value;
   const issueBody = document.getElementById('sim-issue-body').value;
+  const commentBody = document.getElementById('sim-comment-body') ? document.getElementById('sim-comment-body').value : '';
 
   btnSubmitSimulate.disabled = true;
   btnSubmitSimulate.textContent = 'Simulating...';
 
   try {
+    const payload = eventType === 'issue_comment' ? {
+      event_type: 'issue_comment',
+      action: 'created',
+      issue_number: issueNum,
+      comment_body: commentBody,
+      commenter: 'reviewer',
+      repo: 'BowenMichael/f1-frontend'
+    } : {
+      event_type: 'issues',
+      action: 'labeled',
+      label: 'agent:ready',
+      issue_number: issueNum,
+      issue_title: issueTitle,
+      issue_body: issueBody,
+      repo: 'BowenMichael/f1-frontend'
+    };
+
     const res = await fetch('/api/webhooks/simulate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event_type: 'issues',
-        action: 'labeled',
-        label: 'agent:ready',
-        issue_number: issueNum,
-        issue_title: issueTitle,
-        issue_body: issueBody,
-        repo: 'BowenMichael/f1-frontend'
-      })
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
     modalSimulate.classList.add('hidden');
     if (data.session) {
       selectSession(data.session.session_id);
+    } else if (data.result && data.result.session_id) {
+      selectSession(data.result.session_id);
     }
   } catch (err) {
     alert('Failed to simulate webhook: ' + err.message);
   } finally {
     btnSubmitSimulate.disabled = false;
-    btnSubmitSimulate.textContent = 'Simulate & Spawn Agent';
+    btnSubmitSimulate.textContent = 'Simulate Webhook';
   }
 });
 

@@ -37,7 +37,15 @@ class LocalGitWatcher:
     Ensures chats stay open until manually moved into 'Done'.
     Detects re-queued tasks and checks for new comments or modifications.
     """
-    def __init__(self):
+    _instance: Optional["LocalGitWatcher"] = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._init_watcher()
+        return cls._instance
+
+    def _init_watcher(self):
         self.runner = AgentRunnerManager()
         self.active_issues: Set[str] = set()
         self.item_id_map: Dict[str, str] = {}  # "owner/repo#num" -> project_item_id
@@ -149,6 +157,22 @@ class LocalGitWatcher:
         except Exception as e:
             logger.error("Failed to update item status: %s", e)
             return False
+
+    async def update_issue_status(self, repo: str, issue_number: int, status_key: str) -> bool:
+        """Updates the status of an issue on the Project Board by its repo and issue number."""
+        key = f"{repo}#{issue_number}"
+        item_id = self.item_id_map.get(key)
+        if not item_id:
+            # Refresh project boards to resolve item_id if not currently cached
+            for b in PROJECT_BOARD_IDS:
+                await self._check_project_board(b)
+                if key in self.item_id_map:
+                    item_id = self.item_id_map[key]
+                    break
+        if item_id:
+            return await self.update_item_status(item_id, status_key)
+        logger.warning("Could not find project board item for %s", key)
+        return False
 
     async def _check_project_board(self, project_id: str = PROJECT_BOARD_ID):
         query = """
