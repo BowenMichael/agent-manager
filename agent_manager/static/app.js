@@ -510,31 +510,30 @@ btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hi
 btnCancelSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
 
 btnSaveSettings.addEventListener('click', async () => {
+  const selectedMode = document.querySelector('input[name="agy_execution_mode"]:checked')?.value || 'terminal';
   const key = inputGeminiKey.value.trim();
-  if (!key) {
-    alert('Please enter a valid Gemini API Key');
-    return;
-  }
+
   btnSaveSettings.disabled = true;
   btnSaveSettings.textContent = 'Saving...';
   try {
+    const payload = { agy_mode: selectedMode };
+    if (key) {
+      payload.gemini_api_key = key;
+    }
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gemini_api_key: key })
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
-    if (data.has_gemini_api_key) {
-      alert('Gemini API Key saved successfully!');
-      modalSettings.classList.add('hidden');
-      inputGeminiKey.value = '';
-      checkApiKeyStatus();
-    }
+    modalSettings.classList.add('hidden');
+    inputGeminiKey.value = '';
+    await checkApiKeyStatus();
   } catch (err) {
     alert('Failed to save settings: ' + err.message);
   } finally {
     btnSaveSettings.disabled = false;
-    btnSaveSettings.textContent = 'Save API Key';
+    btnSaveSettings.textContent = 'Save Settings';
   }
 });
 
@@ -585,6 +584,29 @@ if (btnRestartCurrent) {
     } finally {
       btnRestartCurrent.disabled = false;
       btnRestartCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Restart Agent`;
+    }
+  });
+}
+
+
+// Open/Re-launch visible terminal button
+const btnOpenTerminal = document.getElementById('btn-open-terminal');
+if (btnOpenTerminal) {
+  btnOpenTerminal.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    try {
+      btnOpenTerminal.disabled = true;
+      btnOpenTerminal.textContent = 'Launching...';
+      const res = await fetch(`/api/agents/${activeSessionId}/launch-terminal`, { method: 'POST' });
+      const data = await res.json();
+      btnOpenTerminal.textContent = 'Terminal Opened!';
+      setTimeout(() => {
+        btnOpenTerminal.disabled = false;
+        btnOpenTerminal.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg> Launch Terminal';
+      }, 3000);
+    } catch (e) {
+      alert('Could not launch terminal: ' + e.message);
+      btnOpenTerminal.disabled = false;
     }
   });
 }

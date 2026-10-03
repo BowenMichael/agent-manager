@@ -43,6 +43,8 @@ class AgentSessionInfo(BaseModel):
     token_count: int = 0
     messages: List[ConversationMessage] = []
     error_message: Optional[str] = None
+    agy_mode: str = "terminal"
+    terminal_command: Optional[str] = None
 
 class SpawnRequest(BaseModel):
     repo: Optional[str] = None
@@ -65,3 +67,8 @@ class SimulateWebhookRequest(BaseModel):
     issue_title: str = "Milestone 1: Historical Calendar & Session Picker UI"
     issue_body: str = "Implement GETMeetings OpenF1 middleware integration, Season and Round dropdown selectors, and Grand Prix session card grid."
     repo: str = "BowenMichael/f1-frontend"
+
+
+class SettingsUpdateRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+    agy_mode: Optional[str] = None

@@ -56,6 +56,7 @@ app.include_router(webhooks_router)
 class SettingsUpdateRequest(BaseModel):
     gemini_api_key: Optional[str] = None
     default_repo: Optional[str] = None
+    agy_mode: Optional[str] = None
 
 @app.get("/api/settings")
 async def get_settings():
@@ -66,7 +67,10 @@ async def get_settings():
         "has_gemini_api_key": bool(key),
         "masked_gemini_api_key": masked_key,
         "default_repo": config.DEFAULT_REPO,
-        "project_board_id": config.PROJECT_BOARD_ID
+        "project_board_id": config.PROJECT_BOARD_ID,
+        "agy_mode": getattr(config, "AGY_MODE", "terminal"),
+        "agy_cli_installed": config.AGY_CLI_PATH.exists(),
+        "agy_cli_path": str(config.AGY_CLI_PATH)
     }
 
 @app.post("/api/settings")
@@ -78,11 +82,28 @@ async def update_settings(req: SettingsUpdateRequest):
     if env_file.exists():
         lines = env_file.read_text(encoding="utf-8").splitlines()
 
+    if req.agy_mode is not None:
+        mode_val = req.agy_mode.strip().lower()
+        if mode_val in ("terminal", "web_stream"):
+            config.AGY_MODE = mode_val
+            os.environ["AGY_MODE"] = mode_val
+            # Update .env
+            found = False
+            new_lines = []
+            for line in lines:
+                if line.startswith("AGY_MODE="):
+                    new_lines.append(f"AGY_MODE={mode_val}")
+                    found = True
+                else:
+                    new_lines.append(line)
+            if not found:
+                new_lines.append(f"AGY_MODE={mode_val}")
+            lines = new_lines
+
     if req.gemini_api_key is not None:
         key_val = req.gemini_api_key.strip()
         config.GEMINI_API_KEY = key_val
         os.environ["GEMINI_API_KEY"] = key_val
-        # Update .env
         found = False
         new_lines = []
         for line in lines:
@@ -93,9 +114,14 @@ async def update_settings(req: SettingsUpdateRequest):
                 new_lines.append(line)
         if not found:
             new_lines.append(f"GEMINI_API_KEY={key_val}")
-        env_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        lines = new_lines
 
-    return {"status": "ok", "has_gemini_api_key": bool(config.GEMINI_API_KEY)}
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "status": "ok",
+        "has_gemini_api_key": bool(config.GEMINI_API_KEY),
+        "agy_mode": config.AGY_MODE
+    }
 
 @app.get("/api/agents", response_model=list[AgentSessionInfo])
 async def list_agents():
@@ -112,6 +138,17 @@ async def get_agent(session_id: str):
 async def spawn_agent(req: SpawnRequest):
     return await runner.spawn_agent(req)
 
+
+@app.post("/api/agents/{session_id}/launch-terminal")
+async def launch_terminal(session_id: str):
+    session = runner.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    cwd_dir = session.worktree_path or str(config.WORKSPACE_BASE)
+    cmd = session.terminal_command or f'& "{config.AGY_CLI_PATH}" --dangerously-skip-permissions -i "Work on Issue #{session.issue_number}"'
+    ps_cmd = f'powershell -NoExit -Command "$host.ui.RawUI.WindowTitle = \'Antigravity CLI (agy) - Issue #{session.issue_number}\'; {cmd}"'
+    subprocess.Popen(f'start {ps_cmd}', cwd=str(cwd_dir), shell=True)
+    return {"status": "ok", "message": "Terminal launched", "command": cmd}
 
 @app.post("/api/agents/{session_id}/restart", response_model=AgentSessionInfo)
 async def restart_agent(session_id: str):

@@ -143,6 +143,10 @@
             </div>
 
             <div class="session-controls">
+              <button class="btn btn-secondary" id="btn-open-terminal" title="Open or re-launch visible terminal window">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                Launch Terminal
+              </button>
               <button class="btn btn-secondary" id="btn-restart-current" title="Refresh & Restart this agent">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
                 Restart Agent
@@ -246,28 +250,58 @@
         </div>
       </div>
     </div>
-  <!-- Modal: Settings / API Key -->
+  <!-- Modal: Settings & Execution Engine -->
     <div class="modal-overlay hidden" id="modal-settings">
-      <div class="modal-card">
+      <div class="modal-card" style="max-width: 560px;">
         <div class="modal-header">
-          <h3>Settings & Gemini API Key</h3>
+          <h3>Settings & Agent Execution Engine</h3>
           <button class="modal-close" id="btn-close-settings">&times;</button>
         </div>
         <div class="modal-body">
-          <p class="modal-desc">The Google Antigravity SDK requires a Google Gemini API Key to run reasoning agents locally.</p>
-          <div class="form-group">
-            <label>Gemini API Key (AIzaSy...)</label>
-            <input type="password" id="input-gemini-key" class="form-control" placeholder="Paste your Gemini API key here">
-            <small style="color: var(--text-dim); margin-top: 4px;">Get a free API key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color: var(--accent-cyan);">Google AI Studio (aistudio.google.com/apikey)</a></small>
+          <div class="form-group" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; color: #10b981; font-size: 0.9rem;">
+              <span>✅ Antigravity Subscription Active</span>
+            </div>
+            <p style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.4;">
+              Native CLI binary installed at <code>C:\Users\tv\AppData\Local\agy\bin\agy.exe</code>.<br>
+              Uses your active Google Antigravity account — <strong>zero Gemini API keys or tokens required</strong>.
+            </p>
           </div>
+
           <div class="form-group">
-            <label>Current Status</label>
-            <div id="key-status-display" style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent-amber);">Checking...</div>
+            <label style="font-weight: 600; margin-bottom: 8px; display: block;">Execution Mode</label>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <label style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; background: var(--bg-card);" id="label-mode-terminal">
+                <input type="radio" name="agy_execution_mode" value="terminal" id="mode-terminal" checked style="margin-top: 3px;">
+                <div>
+                  <div style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary);">🖥️ Option 1: Desktop Terminal Window (Default)</div>
+                  <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                    Launches <code>agy -i</code> in a visible PowerShell / Windows Terminal window with live interactive TUI and auto-approved permissions.
+                  </div>
+                </div>
+              </label>
+
+              <label style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; background: var(--bg-card);" id="label-mode-webstream">
+                <input type="radio" name="agy_execution_mode" value="web_stream" id="mode-webstream" style="margin-top: 3px;">
+                <div>
+                  <div style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary);">🌐 Option 2: Live Web Stream (Override)</div>
+                  <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                    Runs <code>agy</code> headlessly and streams thoughts, tool actions, and diffs live directly into this browser dashboard in real time.
+                  </div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 16px;">
+            <label>Optional Gemini API Key (Fallback)</label>
+            <input type="password" id="input-gemini-key" class="form-control" placeholder="Optional fallback API key">
+            <small style="color: var(--text-dim); margin-top: 4px; display: block;">Not needed when using Antigravity CLI subscription mode.</small>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
-          <button class="btn btn-primary" id="btn-save-settings">Save API Key</button>
+          <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
         </div>
       </div>
     </div>

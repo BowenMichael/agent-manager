@@ -231,54 +231,146 @@ class AgentRunnerManager:
         session = self.sessions[session_id]
         try:
             session.status = AgentStatus.RUNNING
-            await self.broadcast("session_updated", session.model_dump())
-
-            # Launch visible interactive terminal worker that starts working immediately!
+            from agent_manager.config import AGY_CLI_PATH, AGY_MODE
             cwd_dir = worktree_path or str(WORKSPACE_BASE)
             issue_num = session.issue_number or 0
             branch_name = session.git_branch or f"feat/issue-{issue_num}"
-            project_root = Path(__file__).resolve().parent.parent
 
-            logger.info(f"Launching visible terminal worker for session {session_id} on Issue #{issue_num}")
-            await self._append_message(
-                session_id,
-                MessageRole.SYSTEM,
-                f"Launched dedicated interactive terminal for Issue #{issue_num}. Agent started working immediately."
+            session.agy_mode = AGY_MODE
+            logger.info(f"Launching Antigravity CLI (agy) for session {session_id} on Issue #{issue_num} in mode '{AGY_MODE}'")
+
+            agy_prompt = (
+                f"You are the autonomous agent working on Issue #{issue_num} in {session.repo}. "
+                f"Read AGENTS.md rules. Work inside isolated worktree {cwd_dir} on branch {branch_name}. "
+                f"Implement the requested feature, verify tests, and open a PR."
             )
 
-            # PowerShell command in visible window
-            worker_cmd = (
-                f'powershell -NoExit -Command '
-                f'"$host.ui.RawUI.WindowTitle = \'AGY Terminal Agent - Issue #{issue_num}\'; '
-                f'python -u -m agent_manager.worker --session-id \'{session_id}\' --issue {issue_num} '
-                f'--repo \'{session.repo}\' --worktree \'{cwd_dir}\' --branch \'{branch_name}\'"'
-            )
-
-            # Use 'start' to open visible PowerShell terminal window
-            proc = subprocess.Popen(
-                f'start {worker_cmd}',
-                cwd=str(project_root),
-                shell=True
-            )
-            self._active_agents[session_id] = proc
-
-            await self._append_message(
-                session_id,
-                MessageRole.TOOL_RESULT,
-                f"[Terminal Launched] Title: AGY Terminal Agent - Issue #{issue_num}\nStatus: ACTIVELY WORKING IN TERMINAL",
-                tool_name="terminal_launcher"
-            )
-
-            # Keep session active and monitor context queue
-            queue = self._context_queues[session_id]
-            while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED, AgentStatus.COMPLETED]:
+            # Option 1: Desktop Terminal Window (Default)
+            if AGY_MODE == "terminal":
+                escaped_prompt = agy_prompt.replace('"', '\"')
+                session.terminal_command = f'& "{AGY_CLI_PATH}" --dangerously-skip-permissions -i "{escaped_prompt}"'
+                
+                # Write a one-click launcher batch file into the worktree
                 try:
-                    next_ctx = await asyncio.wait_for(queue.get(), timeout=5.0)
-                    await self._append_message(session_id, MessageRole.USER, next_ctx)
-                except asyncio.TimeoutError:
-                    pass
-            return
+                    launcher_bat = Path(cwd_dir) / "launch-agy-terminal.bat"
+                    launcher_bat.write_text(f'@echo off\nchcp 65001 > nul\ntitle Antigravity CLI - Issue #{issue_num}\n"{AGY_CLI_PATH}" --dangerously-skip-permissions -i "{escaped_prompt}"\npause\n', encoding="utf-8")
+                except Exception as bat_err:
+                    logger.debug(f"Could not write launcher bat: {bat_err}")
 
+                await self._append_message(
+                    session_id,
+                    MessageRole.SYSTEM,
+                    f"🖥️ [Option 1: Desktop Terminal] Launched Antigravity CLI (agy) for Issue #{issue_num}.\n"
+                    f"Command: {session.terminal_command}\n"
+                    f"Launcher script created: {cwd_dir}\\launch-agy-terminal.bat"
+                )
+
+                # Launch visible interactive PowerShell window
+                ps_cmd = (
+                    f'powershell -NoExit -Command '
+                    f'"$host.ui.RawUI.WindowTitle = \'Antigravity CLI (agy) - Issue #{issue_num}\'; '
+                    f'& \'{AGY_CLI_PATH}\' --dangerously-skip-permissions -i \'{agy_prompt}\'"'
+                )
+
+                proc = subprocess.Popen(
+                    f'start {ps_cmd}',
+                    cwd=str(cwd_dir),
+                    shell=True
+                )
+                self._active_agents[session_id] = proc
+
+                await self._append_message(
+                    session_id,
+                    MessageRole.TOOL_RESULT,
+                    f"[Option 1 Active] AGY Interactive Terminal TUI\n"
+                    f"Status: ACTIVELY RUNNING\n"
+                    f"Tip: If running headlessly or window did not appear due to Windows session isolation, "
+                    f"run launch-agy-terminal.bat in {cwd_dir} or switch to Web Stream (Option 2) in Settings.",
+                    tool_name="agy_terminal_launcher"
+                )
+
+                # Keep session active and monitor context queue
+                queue = self._context_queues[session_id]
+                while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED, AgentStatus.COMPLETED]:
+                    try:
+                        next_ctx = await asyncio.wait_for(queue.get(), timeout=5.0)
+                        await self._append_message(session_id, MessageRole.USER, next_ctx)
+                    except asyncio.TimeoutError:
+                        pass
+                return
+
+            # Option 2: Live Stream into Web Dashboard (Override)
+            else:
+                await self._append_message(
+                    session_id,
+                    MessageRole.SYSTEM,
+                    f"🌐 [Option 2: Web Stream Override] Running Antigravity CLI headlessly and streaming thoughts and tool calls live into this dashboard..."
+                )
+                await self.broadcast("session_updated", session.model_dump())
+
+                proc = await asyncio.create_subprocess_exec(
+                    str(AGY_CLI_PATH),
+                    "--dangerously-skip-permissions",
+                    "--output-format", "stream-json",
+                    "-p", agy_prompt,
+                    cwd=str(cwd_dir),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                self._active_agents[session_id] = proc
+
+                import json
+                while True:
+                    line_bytes = await proc.stdout.readline()
+                    if not line_bytes:
+                        break
+                    line_str = line_bytes.decode('utf-8', errors='replace').strip()
+                    if not line_str:
+                        continue
+                    try:
+                        event_obj = json.loads(line_str)
+                        ev = event_obj.get("event")
+                        if ev == "step_update":
+                            step = event_obj.get("step_update", {})
+                            stype = step.get("step_type")
+                            sstate = step.get("state")
+                            if stype == "tool":
+                                tname = step.get("tool_name", "tool")
+                                tinfo = step.get("tool_info", {})
+                                if sstate == "ACTIVE":
+                                    await self._append_message(
+                                        session_id,
+                                        MessageRole.TOOL_CALL,
+                                        f"Tool Call: {tname}",
+                                        tool_name=tname,
+                                        tool_args=tinfo.get("parameters")
+                                    )
+                                elif sstate == "DONE":
+                                    await self._append_message(
+                                        session_id,
+                                        MessageRole.TOOL_RESULT,
+                                        str(tinfo.get("output", "Done")),
+                                        tool_name=tname
+                                    )
+                            elif stype == "agent_response":
+                                delta = step.get("text_delta")
+                                if delta:
+                                    await self._broadcast_token(session_id, delta)
+                                if sstate == "DONE" and delta:
+                                    await self._append_message(session_id, MessageRole.AGENT, delta)
+                        elif ev == "result":
+                            res_info = event_obj.get("result", {})
+                            final_resp = res_info.get("response", "Agent finished task.")
+                            await self._append_message(session_id, MessageRole.AGENT, final_resp)
+                            session.status = AgentStatus.COMPLETED
+                    except Exception as json_err:
+                        logger.debug(f"JSON stream line parse info: {json_err}")
+
+                await proc.wait()
+                if session.status != AgentStatus.COMPLETED:
+                    session.status = AgentStatus.COMPLETED if proc.returncode == 0 else AgentStatus.FAILED
+                await self.broadcast("session_updated", session.model_dump())
+                return
         except asyncio.CancelledError:
             session.status = AgentStatus.STOPPED
             logger.info(f"Agent session {session_id} task was cancelled.")
