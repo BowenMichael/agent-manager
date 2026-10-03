@@ -9,6 +9,7 @@ class AgentStatus(str, Enum):
     RUNNING = "RUNNING"
     PAUSED = "PAUSED"
     STOPPED = "STOPPED"
+    IN_REVIEW = "IN_REVIEW"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
@@ -53,6 +54,8 @@ class AgentSessionInfo(BaseModel):
     error_message: Optional[str] = None
     agy_mode: str = "terminal"
     terminal_command: Optional[str] = None
+    seen_comment_ids: List[str] = Field(default_factory=list)
+    last_issue_body: Optional[str] = None
 
 class SpawnRequest(BaseModel):
     repo: Optional[str] = None
@@ -75,7 +78,6 @@ class SimulateWebhookRequest(BaseModel):
     issue_title: str = "Milestone 1: Historical Calendar & Session Picker UI"
     issue_body: str = "Implement GETMeetings OpenF1 middleware integration, Season and Round dropdown selectors, and Grand Prix session card grid."
     repo: str = "BowenMichael/f1-frontend"
-
 
 class SettingsUpdateRequest(BaseModel):
     default_model: Optional[str] = None

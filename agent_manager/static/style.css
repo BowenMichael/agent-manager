@@ -1307,3 +1307,39 @@ body {
   font-size: 0.68rem;
   color: var(--text-dim);
 }
+
+/* In Review Badge & Tag */
+.badge-in-review, .badge-in_review { background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+.tag-in-review, .tag-in_review { background: rgba(168, 85, 247, 0.18); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+
+.btn-success {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+.btn-success:hover {
+  background: rgba(16, 185, 129, 0.28);
+  border-color: var(--accent-green);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+}
+.chat-lifecycle-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(168, 85, 247, 0.1);
+  border-bottom: 1px solid rgba(168, 85, 247, 0.2);
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  color: #d8b4fe;
+}
+.link-pill {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+.link-pill:hover {
+  color: var(--accent-cyan);
+}

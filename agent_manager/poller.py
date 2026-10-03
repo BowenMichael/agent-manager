@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import httpx
-from typing import Optional, Set
+from typing import Optional, Set, Dict
 
 from agent_manager.config import (
     GITHUB_PERSONAL_ACCESS_TOKEN, PROJECT_BOARD_ID,
@@ -27,11 +27,13 @@ class LocalGitWatcher:
     Local Git & Project Board Synchronizer.
     Enables 100% local agent dispatching without opening external ports or tunnels.
     Moves board status directly without adding tags/labels to issues.
+    Ensures chats stay open until manually moved into 'Done'.
+    Detects re-queued tasks and checks for new comments or modifications.
     """
     def __init__(self):
         self.runner = AgentRunnerManager()
         self.active_issues: Set[int] = set()
-        self.item_id_map: dict[int, str] = {}  # issue_number -> project_item_id
+        self.item_id_map: Dict[int, str] = {}  # issue_number -> project_item_id
         self._running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -80,21 +82,25 @@ class LocalGitWatcher:
             "Content-Type": "application/json",
             "User-Agent": "AgentManagerLocal/1.0"
         }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                "https://api.github.com/graphql",
-                json={
-                    "query": mutation,
-                    "variables": {
-                        "projectId": PROJECT_BOARD_ID,
-                        "itemId": item_id,
-                        "fieldId": STATUS_FIELD_ID,
-                        "optionId": option_id
-                    }
-                },
-                headers=headers
-            )
-            return resp.status_code == 200
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.github.com/graphql",
+                    json={
+                        "query": mutation,
+                        "variables": {
+                            "projectId": PROJECT_BOARD_ID,
+                            "itemId": item_id,
+                            "fieldId": STATUS_FIELD_ID,
+                            "optionId": option_id
+                        }
+                    },
+                    headers=headers
+                )
+                return resp.status_code == 200
+        except Exception as e:
+            logger.error("Failed to update item status: %s", e)
+            return False
 
     async def _check_project_board(self):
         query = """
@@ -108,15 +114,26 @@ class LocalGitWatcher:
                     nodes {
                       ... on ProjectV2ItemFieldSingleSelectValue {
                         name
+                        optionId
                         field { ... on ProjectV2SingleSelectField { name } }
                       }
                     }
                   }
                   content {
                     ... on Issue {
+                      id
                       number
                       title
                       body
+                      updatedAt
+                      comments(last: 10) {
+                        nodes {
+                          id
+                          author { login }
+                          body
+                          createdAt
+                        }
+                      }
                       repository { nameWithOwner }
                     }
                   }
@@ -147,9 +164,11 @@ class LocalGitWatcher:
 
             for item in items:
                 status_name = None
+                option_id = None
                 for fv in item.get("fieldValues", {}).get("nodes", []):
                     if fv.get("field", {}).get("name") == "Status":
                         status_name = fv.get("name")
+                        option_id = fv.get("optionId")
                         break
 
                 content = item.get("content")
@@ -158,39 +177,129 @@ class LocalGitWatcher:
 
                 issue_num = content["number"]
                 title = content["title"]
-                body = content["body"] or ""
+                body = content.get("body") or ""
                 repo = content.get("repository", {}).get("nameWithOwner", DEFAULT_REPO)
+                comments = content.get("comments", {}).get("nodes", [])
                 self.item_id_map[issue_num] = item["id"]
 
-                # Check if moved to Ready for Agent
-                if status_name == "📋 Ready for Agent":
-                    active_sessions = [
-                        s for s in self.runner.list_sessions()
-                        if s.issue_number == issue_num and s.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING, AgentStatus.PAUSED]
-                    ]
-                    if not active_sessions and issue_num not in self.active_issues:
-                        logger.info("Found issue #%s in Ready for Agent. Moving status to In Progress on Project Board...", issue_num)
-                        self.active_issues.add(issue_num)
+                # 1. LIFECYCLE: Completed only when manually moved to Done
+                if status_name == "✅ Done" or option_id == STATUS_OPTIONS["done"]:
+                    for s in self.runner.list_sessions():
+                        if s.issue_number == issue_num and s.status != AgentStatus.COMPLETED:
+                            logger.info("Issue #%s detected in '✅ Done'. Formally completing and archiving session %s", issue_num, s.session_id)
+                            await self.runner.complete_agent(s.session_id, reason="Issue moved to 'Done' on GitHub Project Board")
+                    self.active_issues.discard(issue_num)
+                    continue
 
-                        # Move Status directly on the Project Board (NOT adding issue tags/labels)
-                        await self.update_item_status(item["id"], STATUS_OPTIONS["in_progress"])
-                        logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
+                # 2. AUTO-SYNC: If session is IN_REVIEW, ensure Project Board is marked In Review
+                for s in self.runner.list_sessions():
+                    if s.issue_number == issue_num and s.status == AgentStatus.IN_REVIEW:
+                        if status_name == "⚡ In Progress":
+                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_review"])
+                            logger.info("Updated Issue #%s Project Board status to '🔍 In Review'", issue_num)
 
-                        prompt = (
-                            f"You have been assigned to GitHub Issue #{issue_num} in {repo}.\n\n"
-                            f"**Title**: {title}\n\n"
-                            f"**Requirements / Description**:\n{body}\n\n"
-                            f"**Operational Guidelines**:\n"
-                            f"- Work inside the designated branch and isolated worktree .worktrees/issue-{issue_num}.\n"
-                            f"- Inspect existing code patterns before modifying.\n"
-                            f"- Follow AGENTS.md rules and keep documentation updated.\n"
-                            f"- CRITICAL RULE: Do NOT add, remove, or modify GitHub issue labels/tags. Status transitions are managed purely on the GitHub Project Board columns.\n"
-                            f"- When done, commit changes, open a pull request, and summarize your work."
+                # 3. RE-QUEUE & NEW ISSUE: Status is '📋 Ready for Agent'
+                if status_name == "📋 Ready for Agent" or option_id == STATUS_OPTIONS["ready"]:
+                    existing_session = next(
+                        (s for s in self.runner.list_sessions() if s.issue_number == issue_num),
+                        None
+                    )
+
+                    if existing_session:
+                        # Check what has been added to the issue since last run
+                        new_comments = [
+                            c for c in comments
+                            if c.get("id") not in existing_session.seen_comment_ids
+                            and not (c.get("body") or "").startswith("🤖 **Agent")
+                            and not (c.get("body") or "").startswith("🚀 **Task Complete")
+                        ]
+                        body_changed = (
+                            existing_session.last_issue_body is not None and
+                            body.strip() != existing_session.last_issue_body.strip()
                         )
-                        spawn_req = SpawnRequest(
-                            repo=repo,
-                            issue_number=issue_num,
-                            title=title,
-                            prompt=prompt
-                        )
-                        await self.runner.spawn_agent(spawn_req)
+
+                        if new_comments or body_changed:
+                            update_sections = []
+                            if body_changed:
+                                update_sections.append(f"### Updated Issue Description:\n{body.strip()}")
+                            if new_comments:
+                                update_sections.append("### New Comments Added by User:")
+                                for nc in new_comments:
+                                    author = nc.get("author", {}).get("login", "User")
+                                    update_sections.append(f"- **@{author}**: {nc.get('body', '').strip()}")
+
+                            feedback_text = "\n\n".join(update_sections)
+                            logger.info("Issue #%s was moved back to Ready for Agent with new updates (%d new comments). Injecting continuation context.", issue_num, len(new_comments))
+
+                            # Update seen comments and body
+                            for c in comments:
+                                if c.get("id") not in existing_session.seen_comment_ids:
+                                    existing_session.seen_comment_ids.append(c.get("id"))
+                            existing_session.last_issue_body = body
+                            self.runner._save()
+
+                            # Move status on board to In Progress
+                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_progress"])
+                            logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
+
+                            continuation_prompt = (
+                                f"Issue #{issue_num} was moved back to Ready for Agent with new updates:\n\n"
+                                f"{feedback_text}\n\n"
+                                f"**Operational Instructions**:\n"
+                                f"- Work inside the existing isolated worktree ({existing_session.worktree_path}) and branch ({existing_session.git_branch}).\n"
+                                f"- Address all new requirements and user feedback.\n"
+                                f"- Follow AGENTS.md rules: do not add issue labels, keep status transitions purely on the Project Board.\n"
+                                f"- Commit changes, push to branch, and report your progress."
+                            )
+                            await self.runner.add_context(existing_session.session_id, continuation_prompt)
+
+                        elif existing_session.status in [AgentStatus.IN_REVIEW, AgentStatus.IDLE, AgentStatus.PAUSED]:
+                            # No new text added, but user dragged it back to Ready for Agent
+                            logger.info("Issue #%s moved back to Ready for Agent with no new comments. Triggering continuation pass.", issue_num)
+                            for c in comments:
+                                if c.get("id") not in existing_session.seen_comment_ids:
+                                    existing_session.seen_comment_ids.append(c.get("id"))
+                            existing_session.last_issue_body = body
+                            self.runner._save()
+
+                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_progress"])
+                            continuation_prompt = (
+                                f"Issue #{issue_num} has been moved back into Ready for Agent.\n"
+                                f"Please review the work completed in the worktree, test existing features, and continue working on any remaining requirements."
+                            )
+                            await self.runner.add_context(existing_session.session_id, continuation_prompt)
+
+                    else:
+                        # Brand new agent task spawn
+                        active_sessions = [
+                            s for s in self.runner.list_sessions()
+                            if s.issue_number == issue_num and s.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING, AgentStatus.PAUSED]
+                        ]
+                        if not active_sessions and issue_num not in self.active_issues:
+                            logger.info("Found new issue #%s in Ready for Agent. Moving status to In Progress on Project Board...", issue_num)
+                            self.active_issues.add(issue_num)
+
+                            await self.update_item_status(item["id"], STATUS_OPTIONS["in_progress"])
+                            logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
+
+                            prompt = (
+                                f"You have been assigned to GitHub Issue #{issue_num} in {repo}.\n\n"
+                                f"**Title**: {title}\n\n"
+                                f"**Requirements / Description**:\n{body}\n\n"
+                                f"**Operational Guidelines**:\n"
+                                f"- Work inside the designated branch and isolated worktree .worktrees/issue-{issue_num}.\n"
+                                f"- Inspect existing code patterns before modifying.\n"
+                                f"- Follow AGENTS.md rules and keep documentation updated.\n"
+                                f"- CRITICAL RULE: Do NOT add, remove, or modify GitHub issue labels/tags. Status transitions are managed purely on the GitHub Project Board columns.\n"
+                                f"- When done, commit changes, open a pull request, and summarize your work."
+                            )
+                            spawn_req = SpawnRequest(
+                                repo=repo,
+                                issue_number=issue_num,
+                                title=title,
+                                prompt=prompt
+                            )
+                            session = await self.runner.spawn_agent(spawn_req)
+                            session.seen_comment_ids = [c.get("id") for c in comments if c.get("id")]
+                            session.last_issue_body = body
+                            self.runner._save()

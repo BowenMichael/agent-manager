@@ -31,6 +31,7 @@ const streamAnchor = document.getElementById('stream-anchor');
 const contextInput = document.getElementById('context-input');
 const btnSendContext = document.getElementById('btn-send-context');
 const btnStopCurrent = document.getElementById('btn-stop-current');
+const btnDoneCurrent = document.getElementById('btn-done-current');
 
 // Modals
 const modalSimulate = document.getElementById('modal-simulate');
@@ -439,6 +440,7 @@ btnSubmitLaunch.addEventListener('click', async () => {
 function getStatusBadgeClass(status) {
   switch (status) {
     case 'RUNNING': return 'badge-running';
+    case 'IN_REVIEW': return 'badge-in-review';
     case 'COMPLETED': return 'badge-completed';
     case 'STOPPED': return 'badge-stopped';
     case 'PAUSED': return 'badge-paused';
@@ -847,6 +849,32 @@ if (btnResumeCurrent) {
     } catch (e) {
       alert('Could not resume agent: ' + e.message);
       btnResumeCurrent.disabled = false;
+    }
+  });
+}
+
+// Action: Mark Current Agent as Done
+if (btnDoneCurrent) {
+  btnDoneCurrent.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    const s = sessions.find(item => item.session_id === activeSessionId);
+    const label = s && s.issue_number ? `Issue #${s.issue_number}` : 'this agent task';
+    if (!confirm(`Move ${label} to 'Done' on the GitHub Project Board and complete this session?`)) return;
+
+    btnDoneCurrent.disabled = true;
+    btnDoneCurrent.textContent = 'Completing...';
+
+    try {
+      const res = await fetch(`/api/agents/${activeSessionId}/complete`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to complete agent');
+    } catch (err) {
+      alert('Error completing agent: ' + err.message);
+    } finally {
+      btnDoneCurrent.disabled = false;
+      btnDoneCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Mark Done`;
     }
   });
 }

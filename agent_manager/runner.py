@@ -1,55 +1,75 @@
-import asyncio
 import os
-import subprocess
-import time
 import uuid
+import json
+import asyncio
 import logging
-from typing import Dict, Optional, Set, Any
+import subprocess
 from pathlib import Path
-
+from typing import Dict, List, Optional
 from fastapi import WebSocket
+
 from agent_manager.config import (
-    WORKSPACE_BASE, DEFAULT_REPO, DEFAULT_MODEL,
-    GITHUB_PERSONAL_ACCESS_TOKEN, GEMINI_API_KEY
+    DEFAULT_REPO, WORKSPACE_BASE, AGY_CLI_PATH,
+    AGY_MODE, MAX_SESSION_TOKENS
 )
 from agent_manager.models import (
-    AgentSessionInfo, AgentStatus, MessageRole,
-    ConversationMessage, SpawnRequest
+    AgentSessionInfo, AgentStatus, ConversationMessage,
+    MessageRole, SpawnRequest
 )
+from agent_manager.storage import save_sessions, load_sessions
 
 logger = logging.getLogger("agent_manager.runner")
 
 class AgentRunnerManager:
-    _instance = None
+    _instance: Optional["AgentRunnerManager"] = None
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(AgentRunnerManager, cls).__new__(cls)
-            cls._instance.sessions: Dict[str, AgentSessionInfo] = {}
-            cls._instance._tasks: Dict[str, asyncio.Task] = {}
-            cls._instance._context_queues: Dict[str, asyncio.Queue] = {}
-            cls._instance._active_agents: Dict[str, Any] = {}
-            cls._instance._ws_subscribers: Set[WebSocket] = set()
+            cls._instance = super().__new__(cls)
+            cls._instance._init_manager()
         return cls._instance
 
-    def register_ws(self, ws: WebSocket):
-        self._ws_subscribers.add(ws)
+    def _init_manager(self):
+        # Load cached sessions from persistent disk storage
+        self.sessions: Dict[str, AgentSessionInfo] = load_sessions()
+        self._active_agents: Dict[str, asyncio.subprocess.Process] = {}
+        self._context_queues: Dict[str, asyncio.Queue] = {}
+        self._tasks: Dict[str, asyncio.Task] = {}
+        self._ws_connections: List[WebSocket] = []
 
-    def unregister_ws(self, ws: WebSocket):
-        self._ws_subscribers.discard(ws)
+        # Re-initialize context queues for all cached sessions
+        for sid in self.sessions:
+            self._context_queues[sid] = asyncio.Queue()
 
-    async def broadcast(self, event_type: str, data: Any):
-        payload = {"type": event_type, "data": data}
-        dead_sockets = set()
-        for ws in list(self._ws_subscribers):
+    def _save(self):
+        """Persists current sessions state to disk."""
+        try:
+            save_sessions(self.sessions)
+        except Exception as e:
+            logger.error(f"Error persisting sessions: {e}")
+
+    def register_ws(self, websocket: WebSocket):
+        if websocket not in self._ws_connections:
+            self._ws_connections.append(websocket)
+
+    def unregister_ws(self, websocket: WebSocket):
+        if websocket in self._ws_connections:
+            self._ws_connections.remove(websocket)
+
+    async def broadcast(self, event_type: str, data: dict):
+        if not self._ws_connections:
+            return
+        payload = json.dumps({"type": event_type, "data": data})
+        stale = []
+        for ws in self._ws_connections:
             try:
-                await ws.send_json(payload)
+                await ws.send_text(payload)
             except Exception:
-                dead_sockets.add(ws)
-        for dead in dead_sockets:
-            self._ws_subscribers.discard(dead)
+                stale.append(ws)
+        for dead in stale:
+            self.unregister_ws(dead)
 
-    def list_sessions(self) -> list[AgentSessionInfo]:
+    def list_sessions(self) -> List[AgentSessionInfo]:
         return list(self.sessions.values())
 
     def get_session(self, session_id: str) -> Optional[AgentSessionInfo]:
@@ -121,6 +141,7 @@ class AgentRunnerManager:
             content=req.prompt
         )
         session.messages.append(initial_msg)
+        self._save()
         await self.broadcast("session_created", session.model_dump())
 
         # Start execution in background task
@@ -141,9 +162,10 @@ class AgentRunnerManager:
         restart_msg = ConversationMessage(
             id=str(uuid.uuid4()),
             role=MessageRole.SYSTEM,
-            content="Agent session was refreshed and restarted."
+            content="🔄 Agent session was refreshed and restarted."
         )
         session.messages.append(restart_msg)
+        self._save()
         await self.broadcast("session_updated", session.model_dump())
 
         # Reset queue
@@ -155,6 +177,30 @@ class AgentRunnerManager:
         self._tasks[session_id] = task
         logger.info(f"Agent {session_id} restarted successfully.")
         return session
+
+    async def resume_agent(self, session_id: str) -> bool:
+        """Resumes a paused agent session (e.g. after raising token limit)."""
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+
+        session.status = AgentStatus.RUNNING
+        session.error_message = None
+        resume_msg = ConversationMessage(
+            id=str(uuid.uuid4()),
+            role=MessageRole.SYSTEM,
+            content="▶️ Session resumed by user. Continuing execution in isolated worktree."
+        )
+        session.messages.append(resume_msg)
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+
+        # Re-trigger continuation
+        task = asyncio.create_task(
+            self._run_agent_loop(session_id, "Continue working on the task and conclude your remaining deliverables.", session.worktree_path, is_continuation=True)
+        )
+        self._tasks[session_id] = task
+        return True
 
     async def stop_agent(self, session_id: str, reason: str = "Stopped by user") -> bool:
         session = self.sessions.get(session_id)
@@ -176,15 +222,45 @@ class AgentRunnerManager:
         stop_msg = ConversationMessage(
             id=str(uuid.uuid4()),
             role=MessageRole.SYSTEM,
-            content=f"Agent stopped. Reason: {reason}"
+            content=f"⏹️ Agent stopped. Reason: {reason}"
         )
         session.messages.append(stop_msg)
+        self._save()
         await self.broadcast("session_updated", session.model_dump())
         logger.info(f"Agent {session_id} stopped: {reason}")
         return True
 
+    async def complete_agent(self, session_id: str, reason: str = "Issue moved to 'Done' on Project Board") -> bool:
+        """Formally completes and archives the session when the issue card enters 'Done'."""
+        session = self.sessions.get(session_id)
+        if not session:
+            return False
+
+        proc = self._active_agents.get(session_id)
+        if proc and hasattr(proc, 'terminate'):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
+        task = self._tasks.get(session_id)
+        if task and not task.done():
+            task.cancel()
+
+        session.status = AgentStatus.COMPLETED
+        complete_msg = ConversationMessage(
+            id=str(uuid.uuid4()),
+            role=MessageRole.SYSTEM,
+            content=f"✅ [Task Completed & Archived] {reason}. Chat session has concluded successfully."
+        )
+        session.messages.append(complete_msg)
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+        logger.info(f"Agent {session_id} completed: {reason}")
+        return True
+
     async def add_context(self, session_id: str, context: str) -> bool:
-        """Injects user response / instructions into the agent and ensures immediate execution."""
+        """Injects user response / instructions into the agent and ensures continuation."""
         session = self.sessions.get(session_id)
         if not session:
             return False
@@ -196,6 +272,7 @@ class AgentRunnerManager:
             content=context
         )
         session.messages.append(user_msg)
+        self._save()
         await self.broadcast("message_added", {"session_id": session_id, "message": user_msg.model_dump()})
 
         # Put context into the active agent queue
@@ -206,9 +283,10 @@ class AgentRunnerManager:
         # Check if background task is actively running
         task = self._tasks.get(session_id)
         if not task or task.done():
-            logger.info(f"Session {session_id} was idle/done; waking up agent with continuation turn for new user message.")
+            logger.info(f"Session {session_id} was waiting/in review; waking up agent with continuation turn.")
             session.status = AgentStatus.RUNNING
             session.error_message = None
+            self._save()
             await self.broadcast("session_updated", session.model_dump())
             new_task = asyncio.create_task(
                 self._run_agent_loop(session_id, context, session.worktree_path, is_continuation=True)
@@ -216,6 +294,7 @@ class AgentRunnerManager:
             self._tasks[session_id] = new_task
         else:
             session.status = AgentStatus.RUNNING
+            self._save()
             await self.broadcast("session_updated", session.model_dump())
 
         return True
@@ -232,6 +311,7 @@ class AgentRunnerManager:
         session.messages.append(msg)
         if role == MessageRole.TOOL_CALL:
             session.turn_count += 1
+        self._save()
         await self.broadcast("message_added", {"session_id": session_id, "message": msg.model_dump()})
         return msg
 
@@ -244,72 +324,48 @@ class AgentRunnerManager:
         session = self.sessions[session_id]
         try:
             session.status = AgentStatus.RUNNING
-            from agent_manager.config import AGY_CLI_PATH, AGY_MODE, MAX_SESSION_TOKENS
+            self._save()
             cwd_dir = worktree_path or str(WORKSPACE_BASE)
             issue_num = session.issue_number or 0
             branch_name = session.git_branch or f"feat/issue-{issue_num}"
 
-            session.agy_mode = AGY_MODE
-            logger.info(f"Launching Antigravity CLI (agy) for session {session_id} on Issue #{issue_num} in mode '{AGY_MODE}'")
+            from agent_manager.config import AGY_CLI_PATH, AGY_MODE, MAX_SESSION_TOKENS
 
             agy_prompt = (
-                f"You are the autonomous agent working on Issue #{issue_num} in {session.repo}. "
-                f"Read AGENTS.md rules. Work inside isolated worktree {cwd_dir} on branch {branch_name}. "
-                f"Implement the requested feature, verify tests, and open a PR."
+                f"You are operating autonomously on GitHub Issue #{issue_num}.\n"
+                f"Working Directory: {cwd_dir}\n"
+                f"Git Branch: {branch_name}\n\n"
+                f"Task Description:\n{initial_prompt}\n\n"
+                f"RULES:\n"
+                f"1. Make changes in this directory.\n"
+                f"2. Follow AGENTS.md conventions.\n"
+                f"3. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
+                f"4. Once changes are ready, commit and create a pull request if appropriate.\n"
             )
 
-            # Option 1: Desktop Terminal Window (Default)
+            # Option 1: Terminal Mode
             if AGY_MODE == "terminal":
-                escaped_prompt = agy_prompt.replace('"', '\"')
-                session.terminal_command = f'& "{AGY_CLI_PATH}" --dangerously-skip-permissions -i "{escaped_prompt}"'
-                
-                # Write a one-click launcher batch file into the worktree
-                try:
-                    launcher_bat = Path(cwd_dir) / "launch-agy-terminal.bat"
-                    launcher_bat.write_text(f'@echo off\nchcp 65001 > nul\ntitle Antigravity CLI - Issue #{issue_num}\n"{AGY_CLI_PATH}" --dangerously-skip-permissions -i "{escaped_prompt}"\npause\n', encoding="utf-8")
-                except Exception as bat_err:
-                    logger.debug(f"Could not write launcher bat: {bat_err}")
+                escaped_prompt = agy_prompt.replace('"', '`"')
+                cmd = f'& "{AGY_CLI_PATH}" --dangerously-skip-permissions -i "{escaped_prompt}"'
+                session.terminal_command = cmd
+                title_str = f"Antigravity CLI (agy) - Issue #{issue_num}"
+                ps_cmd = f'powershell -NoExit -Command "$host.ui.RawUI.WindowTitle = \"{title_str}\"; {cmd}"'
 
                 await self._append_message(
                     session_id,
                     MessageRole.SYSTEM,
-                    f"🖥️ [Option 1: Desktop Terminal] Launched Antigravity CLI (agy) for Issue #{issue_num}.\n"
-                    f"Command: {session.terminal_command}\n"
-                    f"Launcher script created: {cwd_dir}\\launch-agy-terminal.bat"
+                    f"🚀 [Option 1: Interactive Desktop Terminal] Spawning Antigravity CLI session in dedicated PowerShell window at: {cwd_dir}"
                 )
+                self._save()
+                await self.broadcast("session_updated", session.model_dump())
 
-                # Launch visible interactive PowerShell window
-                ps_cmd = (
-                    f'powershell -NoExit -Command '
-                    f'"$host.ui.RawUI.WindowTitle = \'Antigravity CLI (agy) - Issue #{issue_num}\'; '
-                    f'& \'{AGY_CLI_PATH}\' --dangerously-skip-permissions -i \'{agy_prompt}\'"'
-                )
-
-                proc = subprocess.Popen(
-                    f'start {ps_cmd}',
-                    cwd=str(cwd_dir),
-                    shell=True
-                )
+                proc = subprocess.Popen(f'start {ps_cmd}', cwd=str(cwd_dir), shell=True)
                 self._active_agents[session_id] = proc
 
-                await self._append_message(
-                    session_id,
-                    MessageRole.TOOL_RESULT,
-                    f"[Option 1 Active] AGY Interactive Terminal TUI\n"
-                    f"Status: ACTIVELY RUNNING\n"
-                    f"Tip: If running headlessly or window did not appear due to Windows session isolation, "
-                    f"run launch-agy-terminal.bat in {cwd_dir} or switch to Web Stream (Option 2) in Settings.",
-                    tool_name="agy_terminal_launcher"
-                )
-
-                # Keep session active and monitor context queue
-                queue = self._context_queues[session_id]
-                while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED, AgentStatus.COMPLETED]:
-                    try:
-                        next_ctx = await asyncio.wait_for(queue.get(), timeout=5.0)
-                        await self._append_message(session_id, MessageRole.USER, next_ctx)
-                    except asyncio.TimeoutError:
-                        pass
+                # Keep session alive and interactive in review mode
+                session.status = AgentStatus.IN_REVIEW
+                self._save()
+                await self.broadcast("session_updated", session.model_dump())
                 return
 
             # Option 2: Live Stream into Web Dashboard (Override)
@@ -319,6 +375,7 @@ class AgentRunnerManager:
                     MessageRole.SYSTEM,
                     f"🌐 [Option 2: Web Stream Override] Running Antigravity CLI headlessly and streaming thoughts and tool calls live into this dashboard..."
                 )
+                self._save()
                 await self.broadcast("session_updated", session.model_dump())
 
                 cmd_args = [
@@ -339,7 +396,6 @@ class AgentRunnerManager:
                 )
                 self._active_agents[session_id] = proc
 
-                import json
                 while True:
                     line_bytes = await proc.stdout.readline()
                     if not line_bytes:
@@ -379,9 +435,11 @@ class AgentRunnerManager:
                                     )
                                     if proc.returncode is None:
                                         proc.terminate()
+                                    self._save()
                                     await self.broadcast("session_updated", session.model_dump())
                                     return
 
+                                self._save()
                                 await self.broadcast("session_updated", session.model_dump())
 
                             if "duration_seconds" in step:
@@ -429,18 +487,27 @@ class AgentRunnerManager:
                                 session.duration_seconds = res_info.get("duration_seconds", session.duration_seconds)
 
                             await self._append_message(session_id, MessageRole.AGENT, final_resp)
-                            session.status = AgentStatus.COMPLETED
+                            # CRITICAL: Chat stays open and active in IN_REVIEW until issue is moved to Done!
+                            session.status = AgentStatus.IN_REVIEW
+                            await self._append_message(
+                                session_id,
+                                MessageRole.SYSTEM,
+                                "💬 [Turn Complete] Agent finished this execution turn. The chat remains open and active for follow-up questions, instructions, or reviews until this issue is moved to 'Done' on the Project Board."
+                            )
+                            self._save()
                             await self.broadcast("session_updated", session.model_dump())
                     except Exception as json_err:
                         logger.debug(f"JSON stream line parse info: {json_err}")
 
                 await proc.wait()
-                if session.status != AgentStatus.COMPLETED:
-                    session.status = AgentStatus.COMPLETED if proc.returncode == 0 else AgentStatus.FAILED
+                if session.status not in [AgentStatus.PAUSED, AgentStatus.STOPPED, AgentStatus.COMPLETED]:
+                    session.status = AgentStatus.IN_REVIEW if proc.returncode == 0 else AgentStatus.FAILED
+                self._save()
                 await self.broadcast("session_updated", session.model_dump())
                 return
         except asyncio.CancelledError:
-            session.status = AgentStatus.STOPPED
+            if session.status != AgentStatus.COMPLETED:
+                session.status = AgentStatus.STOPPED
             logger.info(f"Agent session {session_id} task was cancelled.")
         except Exception as e:
             session.status = AgentStatus.FAILED
@@ -449,4 +516,5 @@ class AgentRunnerManager:
             await self._append_message(session_id, MessageRole.SYSTEM, f"Agent encountered error: {str(e)}")
         finally:
             self._active_agents.pop(session_id, None)
+            self._save()
             await self.broadcast("session_updated", session.model_dump())
