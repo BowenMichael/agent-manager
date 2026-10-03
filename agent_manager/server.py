@@ -15,7 +15,7 @@ from pydantic import BaseModel
 import os
 from agent_manager.models import (
     SpawnRequest, AddContextRequest, StopAgentRequest,
-    SimulateWebhookRequest, AgentSessionInfo
+    SimulateWebhookRequest, AgentSessionInfo, SettingsUpdateRequest
 )
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.webhooks import router as webhooks_router
@@ -57,14 +57,6 @@ runner = AgentRunnerManager()
 app.include_router(webhooks_router)
 
 # REST Endpoints
-class SettingsUpdateRequest(BaseModel):
-    gemini_api_key: Optional[str] = None
-    default_repo: Optional[str] = None
-    agy_mode: Optional[str] = None
-    default_model: Optional[str] = None
-    effort_level: Optional[str] = None
-    max_session_tokens: Optional[int] = None
-
 @app.get("/api/settings")
 async def get_settings():
     import agent_manager.config as config
@@ -89,8 +81,9 @@ async def get_settings():
         "agy_mode": getattr(config, "AGY_MODE", "web_stream"),
         "agy_cli_installed": config.AGY_CLI_PATH.exists(),
         "agy_cli_path": str(config.AGY_CLI_PATH),
-        "default_model": getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash-high"),
+        "default_model": getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash"),
         "default_effort": getattr(config, "DEFAULT_EFFORT", "high"),
+        "allow_overage_credits": config.get_cli_overage_credits(),
         "available_efforts": getattr(config, "AVAILABLE_EFFORT_LEVELS", []),
         "available_models": getattr(config, "AVAILABLE_MODELS", []),
         "max_session_tokens": getattr(config, "MAX_SESSION_TOKENS", 150000),
@@ -104,7 +97,10 @@ async def update_settings(req: SettingsUpdateRequest):
     
     lines = []
     if env_file.exists():
-        lines = env_file.read_text(encoding="utf-8").splitlines()
+        try:
+            lines = env_file.read_text(encoding="utf-8").splitlines()
+        except Exception as e:
+            logger.warning(f"Could not read .env file: {e}")
 
     def set_env(key_name, val):
         nonlocal lines
@@ -120,9 +116,9 @@ async def update_settings(req: SettingsUpdateRequest):
             new_lines.append(f"{key_name}={val}")
         lines = new_lines
 
-    
-    if req.effort_level:
-        eff_val = req.effort_level.strip().lower()
+    effort_val = req.default_effort or req.effort_level
+    if effort_val:
+        eff_val = effort_val.strip().lower()
         config.DEFAULT_EFFORT = eff_val
         os.environ["DEFAULT_EFFORT"] = eff_val
         set_env("DEFAULT_EFFORT", eff_val)
@@ -132,6 +128,10 @@ async def update_settings(req: SettingsUpdateRequest):
         config.DEFAULT_MODEL = model_val
         os.environ["DEFAULT_MODEL"] = model_val
         set_env("DEFAULT_MODEL", model_val)
+
+    if req.allow_overage_credits is not None:
+        config.set_cli_overage_credits(req.allow_overage_credits)
+        set_env("ALLOW_OVERAGE_CREDITS", str(req.allow_overage_credits).lower())
 
     if req.max_session_tokens:
         tok_val = int(req.max_session_tokens)
@@ -152,15 +152,22 @@ async def update_settings(req: SettingsUpdateRequest):
         os.environ["GEMINI_API_KEY"] = key_val
         set_env("GEMINI_API_KEY", key_val)
 
-    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {
+    try:
+        env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Could not persist to .env: {e}")
+
+    result = {
         "status": "ok",
         "has_gemini_api_key": bool(config.GEMINI_API_KEY),
         "default_model": config.DEFAULT_MODEL,
         "default_effort": config.DEFAULT_EFFORT,
+        "allow_overage_credits": config.get_cli_overage_credits(),
         "max_session_tokens": config.MAX_SESSION_TOKENS,
         "agy_mode": config.AGY_MODE
     }
+    await runner.broadcast("settings_updated", result)
+    return result
 
 @app.get("/api/agents", response_model=list[AgentSessionInfo])
 async def list_agents():

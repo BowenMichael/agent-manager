@@ -54,6 +54,8 @@ class AgentSessionInfo(BaseModel):
     error_message: Optional[str] = None
     agy_mode: str = "terminal"
     terminal_command: Optional[str] = None
+    model: Optional[str] = None
+    effort: Optional[str] = None
     current_activity: Optional[str] = "IDLE"
     last_activity_at: Optional[str] = None
     is_stalled: bool = False
@@ -68,6 +70,8 @@ class SpawnRequest(BaseModel):
     title: Optional[str] = None
     prompt: str
     worktree_branch: Optional[str] = None
+    model: Optional[str] = None
+    effort: Optional[str] = None
 
 class AddContextRequest(BaseModel):
     context: str
@@ -87,6 +91,8 @@ class SimulateWebhookRequest(BaseModel):
 class SettingsUpdateRequest(BaseModel):
     default_model: Optional[str] = None
     effort_level: Optional[str] = None
+    default_effort: Optional[str] = None
+    allow_overage_credits: Optional[bool] = None
     max_session_tokens: Optional[int] = None
     gemini_api_key: Optional[str] = None
     agy_mode: Optional[str] = None

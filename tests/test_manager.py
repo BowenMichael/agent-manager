@@ -10,6 +10,13 @@ class TestAgentManager(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
         self.runner = AgentRunnerManager()
+        async def mock_run_agent_loop(session_id, prompt, worktree, is_continuation=False):
+            return
+        self.original_run_loop = self.runner._run_agent_loop
+        self.runner._run_agent_loop = mock_run_agent_loop
+
+    def tearDown(self):
+        self.runner._run_agent_loop = self.original_run_loop
 
     def test_webhook_issues_ready_trigger(self):
         payload = {
@@ -80,6 +87,60 @@ class TestAgentManager(unittest.TestCase):
         get_res = self.client.get(f"/api/agents/{session_id}")
         self.assertEqual(get_res.status_code, 200)
         self.assertEqual(get_res.json()["status"], AgentStatus.STOPPED.value)
+
+    def test_settings_model_effort_and_next_prompt_update(self):
+        # 1. Update settings with new model, effort, and overage credits
+        settings_res = self.client.post("/api/settings", json={
+            "default_model": "claude-sonnet-5-5",
+            "default_effort": "medium",
+            "allow_overage_credits": True,
+            "max_session_tokens": 120000
+        })
+        self.assertEqual(settings_res.status_code, 200)
+        data = settings_res.json()
+        self.assertEqual(data["default_model"], "claude-sonnet-5-5")
+        self.assertEqual(data["default_effort"], "medium")
+        self.assertTrue(data["allow_overage_credits"])
+
+        # 2. Verify GET /api/settings
+        get_settings_res = self.client.get("/api/settings")
+        self.assertEqual(get_settings_res.status_code, 200)
+        curr_settings = get_settings_res.json()
+        self.assertEqual(curr_settings["default_model"], "claude-sonnet-5-5")
+        self.assertEqual(curr_settings["default_effort"], "medium")
+        self.assertTrue(curr_settings["allow_overage_credits"])
+
+        # 3. Spawn agent and verify model and effort
+        spawn_res = self.client.post("/api/agents/spawn", json={
+            "issue_number": 998,
+            "title": "Model Effort Test Agent",
+            "prompt": "Initial prompt"
+        })
+        self.assertEqual(spawn_res.status_code, 200)
+        session = spawn_res.json()
+        session_id = session["session_id"]
+        self.assertEqual(session.get("model"), "claude-sonnet-5-5")
+        self.assertEqual(session.get("effort"), "medium")
+
+        # 4. Change settings to another model and effort
+        self.client.post("/api/settings", json={
+            "default_model": "gemini-3.8-flash",
+            "default_effort": "low"
+        })
+
+        # 5. Prompt the agent again (add_context)
+        ctx_res = self.client.post(f"/api/agents/{session_id}/context", json={
+            "context": "Follow-up instruction for agent"
+        })
+        self.assertEqual(ctx_res.status_code, 200)
+
+        # 6. Verify session updated to the new model and effort for this next prompt
+        updated_session = self.client.get(f"/api/agents/{session_id}").json()
+        self.assertEqual(updated_session.get("model"), "gemini-3.8-flash")
+        self.assertEqual(updated_session.get("effort"), "low")
+
+        # Clean up
+        self.client.post(f"/api/agents/{session_id}/stop")
 
 if __name__ == "__main__":
     unittest.main()

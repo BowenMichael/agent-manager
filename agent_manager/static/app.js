@@ -216,6 +216,10 @@ function handleWsMessage(msg) {
       showQuotaToast(msg.data);
       break;
 
+    case 'settings_updated':
+      if (typeof loadSettings === 'function') loadSettings();
+      break;
+
     case 'token_stream':
       const { session_id: sId, token } = msg.data;
       const s = sessions.find(s => s.session_id === sId);
@@ -339,6 +343,11 @@ function updateActiveSessionView(session) {
   currentBranch.textContent = session.git_branch || 'main';
   currentWorktree.textContent = session.worktree_path ? session.worktree_path.split(/[\\/]/).slice(-2).join('/') : 'in-repo';
   turnCounter.textContent = `Turns: ${session.turn_count || 0} • Tokens: ${session.token_count || 0}`;
+
+  const currentModelTag = document.getElementById('current-model-tag');
+  const currentEffortTag = document.getElementById('current-effort-tag');
+  if (currentModelTag) currentModelTag.textContent = session.model || 'gemini-3.8-flash';
+  if (currentEffortTag) currentEffortTag.textContent = `effort: ${session.effort || 'high'}`;
 
   btnStopCurrent.disabled = (session.status === 'STOPPED' || session.status === 'COMPLETED' || session.status === 'FAILED');
   updateOverviewPanel(session);
@@ -584,49 +593,149 @@ const keyStatusDisplay = document.getElementById('key-status-display');
 const apiKeyBanner = document.getElementById('api-key-banner');
 const btnBannerConfigure = document.getElementById('btn-banner-configure');
 
-async function checkApiKeyStatus() {
+function showToast(msg, type = 'info') {
+  const stack = document.getElementById('toast-stack');
+  if (stack) {
+    const t = document.createElement('div');
+    t.className = 'toast-quota';
+    t.style.borderLeft = type === 'error' ? '4px solid #ef4444' : '4px solid #10b981';
+    t.innerHTML = `<div class="toast-title" style="color: ${type === 'error' ? '#ef4444' : '#10b981'}; font-weight: 700;">${type === 'error' ? '⚠️ Error' : '✅ Settings Saved'}</div><div class="toast-body">${escapeHtml(msg)}</div>`;
+    stack.appendChild(t);
+    setTimeout(() => t.remove(), 6000);
+  }
+}
+
+async function loadSettings() {
   try {
     const res = await fetch('/api/settings');
+    if (!res.ok) return;
     const data = await res.json();
+
+    // API Key status
     if (data.has_gemini_api_key) {
-      apiKeyBanner.classList.add('hidden');
-      keyStatusDisplay.textContent = 'Active: ' + data.masked_gemini_api_key;
-      keyStatusDisplay.style.color = 'var(--accent-green)';
+      if (apiKeyBanner) apiKeyBanner.classList.add('hidden');
+      if (keyStatusDisplay) {
+        keyStatusDisplay.textContent = 'Active: ' + data.masked_gemini_api_key;
+        keyStatusDisplay.style.color = 'var(--accent-green)';
+      }
     } else {
-      apiKeyBanner.classList.remove('hidden');
-      keyStatusDisplay.textContent = 'Not configured';
-      keyStatusDisplay.style.color = 'var(--accent-amber)';
+      if (apiKeyBanner) apiKeyBanner.classList.remove('hidden');
+      if (keyStatusDisplay) {
+        keyStatusDisplay.textContent = 'Not configured';
+        keyStatusDisplay.style.color = 'var(--accent-amber)';
+      }
+    }
+
+    // Default Model & Effort
+    const selectModel = document.getElementById('select-default-model');
+    const selectEffort = document.getElementById('select-default-effort');
+    const badgeModel = document.getElementById('current-model-badge');
+    const badgeEffort = document.getElementById('current-effort-badge');
+    const checkOverage = document.getElementById('check-allow-overage');
+    const inputMaxTokens = document.getElementById('input-max-tokens');
+
+    if (selectModel && data.default_model) {
+      let matched = false;
+      for (const opt of selectModel.options) {
+        if (opt.value === data.default_model) {
+          selectModel.value = data.default_model;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        const base = data.default_model.replace(/-(low|medium|high|xhigh|max)$/, '');
+        for (const opt of selectModel.options) {
+          if (opt.value === base) {
+            selectModel.value = base;
+            matched = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (selectEffort && data.default_effort) {
+      selectEffort.value = data.default_effort;
+    }
+
+    if (badgeModel && data.default_model) {
+      badgeModel.textContent = data.default_model;
+    }
+
+    if (badgeEffort && data.default_effort) {
+      badgeEffort.textContent = data.default_effort;
+    }
+
+    if (checkOverage && typeof data.allow_overage_credits === 'boolean') {
+      checkOverage.checked = data.allow_overage_credits;
+    }
+
+    if (inputMaxTokens && data.max_session_tokens) {
+      inputMaxTokens.value = data.max_session_tokens;
+    }
+
+    // Mode
+    if (data.agy_mode === 'terminal') {
+      const modeTerm = document.getElementById('mode-terminal');
+      if (modeTerm) modeTerm.checked = true;
+    } else {
+      const modeWeb = document.getElementById('mode-webstream');
+      if (modeWeb) modeWeb.checked = true;
+    }
+
+    // Quota display
+    if (data.quota_status) {
+      const quotaTitle = document.getElementById('settings-quota-title');
+      const quotaTag = document.getElementById('settings-quota-tag');
+      const quotaDesc = document.getElementById('settings-quota-desc');
+      if (data.quota_status.subscription_quota_reached) {
+        if (quotaTitle) quotaTitle.innerHTML = '<span>⚠️</span> Antigravity Quota Reached';
+        if (quotaTag) {
+          quotaTag.textContent = 'QUOTA LIMITED';
+          quotaTag.style.background = 'rgba(239, 68, 68, 0.2)';
+          quotaTag.style.color = '#f87171';
+          quotaTag.style.border = '1px solid #ef4444';
+        }
+        if (quotaDesc) {
+          quotaDesc.innerHTML = `Baseline quota reached. ${data.allow_overage_credits ? '<strong>AI Credit Overages are active</strong> to prevent interruptions.' : 'Enable <strong>AI Credit Overages</strong> or switch models below.'}`;
+        }
+      } else {
+        if (quotaTitle) quotaTitle.innerHTML = '<span>✅</span> Antigravity Subscription Active';
+        if (quotaTag) {
+          quotaTag.textContent = 'FRESH QUOTA';
+          quotaTag.style.background = 'rgba(16, 185, 129, 0.2)';
+          quotaTag.style.color = '#34d399';
+          quotaTag.style.border = '1px solid #10b981';
+        }
+        if (quotaDesc) {
+          quotaDesc.innerHTML = `<strong>Google Antigravity Subscription</strong> is active and verified.<br>${data.allow_overage_credits ? 'AI Credit Overages (useG1Credits) enabled.' : 'Zero API key needed.'}`;
+        }
+      }
     }
   } catch (e) {
-    console.error('Failed to fetch settings:', e);
+    console.error('Failed to load settings:', e);
   }
 }
 
 btnSettingsModal.addEventListener('click', () => {
   modalSettings.classList.remove('hidden');
-  checkApiKeyStatus();
+  loadSettings();
 });
 btnBannerConfigure.addEventListener('click', () => {
   modalSettings.classList.remove('hidden');
-  checkApiKeyStatus();
+  loadSettings();
 });
 btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
 btnCancelSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
 
-
-  const settingEffort = document.getElementById('setting-effort');
-  settingModel.addEventListener('change', () => {
-    const val = settingModel.value;
-    if (val.endsWith('-high') && settingEffort) settingEffort.value = 'high';
-    else if (val.endsWith('-medium') && settingEffort) settingEffort.value = 'medium';
-    else if (val.endsWith('-low') && settingEffort) settingEffort.value = 'low';
-  });
-
 btnSaveSettings.addEventListener('click', async () => {
   const selectedMode = document.querySelector('input[name="agy_execution_mode"]:checked')?.value || 'web_stream';
-  const selectedModel = document.getElementById('select-default-model')?.value || 'gemini-3.1-pro-high';
+  const selectedModel = document.getElementById('select-default-model')?.value || 'gemini-3.8-flash';
+  const selectedEffort = document.getElementById('select-default-effort')?.value || 'high';
+  const allowOverage = document.getElementById('check-allow-overage')?.checked ?? true;
   const maxTokens = parseInt(document.getElementById('input-max-tokens')?.value || '150000', 10);
-  const key = inputGeminiKey.value.trim();
+  const key = inputGeminiKey?.value.trim();
 
   btnSaveSettings.disabled = true;
   btnSaveSettings.textContent = 'Saving...';
@@ -634,6 +743,9 @@ btnSaveSettings.addEventListener('click', async () => {
     const payload = {
       agy_mode: selectedMode,
       default_model: selectedModel,
+      default_effort: selectedEffort,
+      effort_level: selectedEffort,
+      allow_overage_credits: allowOverage,
       max_session_tokens: maxTokens
     };
     if (key) {
@@ -644,12 +756,26 @@ btnSaveSettings.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errText}`);
+    }
+
     const data = await res.json();
     modalSettings.classList.add('hidden');
-    inputGeminiKey.value = '';
-    await checkApiKeyStatus();
+    if (inputGeminiKey) inputGeminiKey.value = '';
+
+    // Update badges
+    const badgeModel = document.getElementById('current-model-badge');
+    const badgeEffort = document.getElementById('current-effort-badge');
+    if (badgeModel) badgeModel.textContent = data.default_model;
+    if (badgeEffort) badgeEffort.textContent = data.default_effort;
+
+    showToast(`Settings saved! Model: ${data.default_model} (${data.default_effort} effort). Will apply on next prompt.`);
+    await loadSettings();
   } catch (err) {
-    alert('Failed to save settings: ' + err.message);
+    showToast('Failed to save settings: ' + err.message, 'error');
   } finally {
     btnSaveSettings.disabled = false;
     btnSaveSettings.textContent = 'Save Settings';
@@ -657,7 +783,7 @@ btnSaveSettings.addEventListener('click', async () => {
 });
 
 // Check on boot
-checkApiKeyStatus();
+loadSettings();
 
 // Action: Sync Board
 const btnSyncBoard = document.getElementById('btn-sync-board');

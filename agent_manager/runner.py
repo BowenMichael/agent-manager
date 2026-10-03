@@ -142,6 +142,8 @@ class AgentRunnerManager:
             status=AgentStatus.INITIALIZING,
             worktree_path=worktree_path,
             git_branch=branch_name or req.worktree_branch or "main",
+            model=req.model or getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash"),
+            effort=req.effort or getattr(config, "DEFAULT_EFFORT", "high"),
         )
         self.sessions[session_id] = session
         self._context_queues[session_id] = asyncio.Queue()
@@ -171,10 +173,14 @@ class AgentRunnerManager:
 
         session.status = AgentStatus.INITIALIZING
         session.error_message = None
+        # Apply updated model and effort settings on restart
+        session.model = getattr(config, "DEFAULT_MODEL", session.model or "gemini-3.8-flash")
+        session.effort = getattr(config, "DEFAULT_EFFORT", session.effort or "high")
+
         restart_msg = ConversationMessage(
             id=str(uuid.uuid4()),
             role=MessageRole.SYSTEM,
-            content="🔄 Agent session was refreshed and restarted."
+            content=f"🔄 Agent session restarted with model: {session.model} (effort: {session.effort})."
         )
         session.messages.append(restart_msg)
         self._save()
@@ -200,10 +206,14 @@ class AgentRunnerManager:
         session.error_message = None
         session.quota_exceeded = False
         session.quota_message = None
+        # Apply updated model and effort settings on resume
+        session.model = getattr(config, "DEFAULT_MODEL", session.model or "gemini-3.8-flash")
+        session.effort = getattr(config, "DEFAULT_EFFORT", session.effort or "high")
+
         resume_msg = ConversationMessage(
             id=str(uuid.uuid4()),
             role=MessageRole.SYSTEM,
-            content="▶️ Session resumed by user. Continuing execution in isolated worktree."
+            content=f"▶️ Session resumed by user with model: {session.model} (effort: {session.effort}). Continuing execution in isolated worktree."
         )
         session.messages.append(resume_msg)
         self._save()
@@ -274,7 +284,7 @@ class AgentRunnerManager:
         return True
 
     async def add_context(self, session_id: str, context: str) -> bool:
-        """Injects user response / instructions into the agent. If process is hanging or running, safely interrupts it and executes continuation."""
+        """Injects user response / instructions into the agent. Applies latest model & effort settings for the prompt."""
         session = self.sessions.get(session_id)
         if not session:
             return False
@@ -290,6 +300,15 @@ class AgentRunnerManager:
         session.quota_exceeded = False
         session.quota_message = None
         session.current_activity = "Processing new user instructions..."
+
+        # Apply updated model and effort for this prompt
+        current_cfg_model = getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash")
+        current_cfg_effort = getattr(config, "DEFAULT_EFFORT", "high")
+        if session.model != current_cfg_model or session.effort != current_cfg_effort:
+            logger.info(f"Updated session {session_id} to model={current_cfg_model}, effort={current_cfg_effort} for next prompt.")
+            session.model = current_cfg_model
+            session.effort = current_cfg_effort
+
         self._save()
         await self.broadcast("message_added", {"session_id": session_id, "message": user_msg.model_dump()})
 
@@ -354,7 +373,17 @@ class AgentRunnerManager:
             issue_num = session.issue_number or 0
             branch_name = session.git_branch or f"feat/issue-{issue_num}"
 
-            from agent_manager.config import AGY_CLI_PATH, AGY_MODE, MAX_SESSION_TOKENS
+            from agent_manager.config import AGY_CLI_PATH, AGY_MODE, MAX_SESSION_TOKENS, resolve_model_and_effort
+
+            # Resolve model and effort cleanly for CLI execution
+            selected_model = session.model or getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash")
+            selected_effort = session.effort or getattr(config, "DEFAULT_EFFORT", "high")
+            clean_model, clean_effort, cli_model_args = resolve_model_and_effort(selected_model, selected_effort)
+            session.model = clean_model
+            session.effort = clean_effort
+
+            current_mode = getattr(config, "AGY_MODE", AGY_MODE)
+            current_max_tokens = getattr(config, "MAX_SESSION_TOKENS", MAX_SESSION_TOKENS)
 
             agy_prompt = (
                 f"You are operating autonomously on GitHub Issue #{issue_num}.\n"
@@ -369,19 +398,18 @@ class AgentRunnerManager:
             )
 
             # Option 1: Terminal Mode
-            if AGY_MODE == "terminal":
+            if current_mode == "terminal":
                 escaped_prompt = agy_prompt.replace('"', '`"')
-                selected_model = getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash-high")
-                selected_effort = getattr(config, "DEFAULT_EFFORT", "high")
-                cmd = f'& "{AGY_CLI_PATH}" --model "{selected_model}" --effort "{selected_effort}" --dangerously-skip-permissions -i "{escaped_prompt}"'
+                cmd = f'& "{AGY_CLI_PATH}" {" ".join(cli_model_args)} --dangerously-skip-permissions -i "{escaped_prompt}"'
                 session.terminal_command = cmd
-                title_str = f"Antigravity CLI (agy) - Issue #{issue_num}"
+                title_str = f"Antigravity CLI (agy) - Issue #{issue_num} [{clean_model} / {clean_effort}]"
                 ps_cmd = f'powershell -NoExit -Command "$host.ui.RawUI.WindowTitle = \"{title_str}\"; {cmd}"'
 
                 await self._append_message(
                     session_id,
                     MessageRole.SYSTEM,
-                    f"🚀 [Option 1: Interactive Desktop Terminal] Spawning Antigravity CLI session in dedicated PowerShell window at: {cwd_dir}"
+                    f"🚀 [Option 1: Interactive Desktop Terminal] Spawning Antigravity CLI session in dedicated PowerShell window at: {cwd_dir}\n"
+                    f"Model: {clean_model} • Effort: {clean_effort}"
                 )
                 self._save()
                 await self.broadcast("session_updated", session.model_dump())
@@ -397,20 +425,18 @@ class AgentRunnerManager:
 
             # Option 2: Live Stream into Web Dashboard (Override)
             else:
+                prompt_note = f"Prompting agent with model {clean_model} (effort: {clean_effort})" if is_continuation else f"Spawning agent with model {clean_model} (effort: {clean_effort})"
                 await self._append_message(
                     session_id,
                     MessageRole.SYSTEM,
-                    f"🌐 [Option 2: Web Stream Override] Running Antigravity CLI headlessly and streaming thoughts and tool calls live into this dashboard..."
+                    f"🌐 [Option 2: Web Stream Override] {prompt_note} and streaming thoughts and tool calls live into this dashboard..."
                 )
                 self._save()
                 await self.broadcast("session_updated", session.model_dump())
 
-                selected_model = getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash-high")
-                selected_effort = getattr(config, "DEFAULT_EFFORT", "high")
                 cmd_args = [
                     str(AGY_CLI_PATH),
-                    "--model", selected_model,
-                    "--effort", selected_effort,
+                    *cli_model_args,
                     "--dangerously-skip-permissions",
                     "--output-format", "stream-json"
                 ]
@@ -456,12 +482,13 @@ class AgentRunnerManager:
                                 session.cache_read_tokens = usage.get("cache_read_tokens", session.cache_read_tokens)
                                 session.total_tokens = usage.get("total_tokens", session.total_tokens)
                                 session.token_count = session.total_tokens
-                                session.quota_percent = min(100.0, round((session.total_tokens / MAX_SESSION_TOKENS) * 100, 1))
+                                session.max_tokens = current_max_tokens
+                                session.quota_percent = min(100.0, round((session.total_tokens / current_max_tokens) * 100, 1))
 
                                 # TOKEN LIMIT GUARDRAIL
-                                if session.total_tokens >= MAX_SESSION_TOKENS:
+                                if session.total_tokens >= current_max_tokens:
                                     session.status = AgentStatus.PAUSED
-                                    session.error_message = f"Token budget limit reached ({session.total_tokens:,} / {MAX_SESSION_TOKENS:,} tokens)."
+                                    session.error_message = f"Token budget limit reached ({session.total_tokens:,} / {current_max_tokens:,} tokens)."
                                     await self._append_message(
                                         session_id,
                                         MessageRole.SYSTEM,
