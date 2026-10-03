@@ -277,6 +277,7 @@ function renderSessionsList() {
     card.innerHTML = `
       <div class="card-top">
         <span class="card-status-badge ${session.quota_exceeded ? 'badge-quota' : statusBadgeClass}">${session.quota_exceeded ? '🚫 QUOTA' : session.status}</span>
+        ${session.is_compacted ? '<span class="badge-compacted" title="Chat compacted">📦 COMPACT</span>' : ''}
         <span class="card-time">${formatTime(session.started_at)}</span>
       </div>
       <div class="card-title">${escapeHtml(session.title)}</div>
@@ -392,8 +393,19 @@ function renderMessageItem(msg) {
       <div class="tool-args">${escapeHtml(msg.content)}</div>
     `;
   } else if (msg.role === 'SYSTEM') {
-    bubble.className = 'msg-bubble msg-system';
-    bubble.innerHTML = `<strong>SYSTEM:</strong> ${escapeHtml(msg.content)}`;
+    if (msg.content && msg.content.includes('Chat Compacted & Compressed')) {
+      bubble.className = 'msg-bubble msg-compacted';
+      bubble.innerHTML = `
+        <div class="msg-compacted-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+          <span>CHAT COMPACTED & COMPRESSED (TOKEN OPTIMIZATION)</span>
+        </div>
+        <div class="msg-compacted-body">${formatContent(msg.content.replace('📦 **Chat Compacted & Compressed (Token Optimization)**\n', ''))}</div>
+      `;
+    } else {
+      bubble.className = 'msg-bubble msg-system';
+      bubble.innerHTML = `<strong>SYSTEM:</strong> ${escapeHtml(msg.content)}`;
+    }
   }
 
   transcriptStream.appendChild(bubble);
@@ -675,6 +687,11 @@ async function loadSettings() {
       inputMaxTokens.value = data.max_session_tokens;
     }
 
+    const checkAutoCompact = document.getElementById('check-auto-compact');
+    if (checkAutoCompact && typeof data.compact_completed_chat === 'boolean') {
+      checkAutoCompact.checked = data.compact_completed_chat;
+    }
+
     // Mode
     if (data.agy_mode === 'terminal') {
       const modeTerm = document.getElementById('mode-terminal');
@@ -759,6 +776,7 @@ btnSaveSettings.addEventListener('click', async () => {
   const selectedEffort = document.getElementById('select-default-effort')?.value || 'high';
   const allowOverage = document.getElementById('check-allow-overage')?.checked ?? true;
   const maxTokens = parseInt(document.getElementById('input-max-tokens')?.value || '150000', 10);
+  const autoCompact = document.getElementById('check-auto-compact')?.checked ?? true;
   const repoVal = document.getElementById('setting-default-repo')?.value?.trim();
   const key = inputGeminiKey?.value.trim();
 
@@ -771,7 +789,8 @@ btnSaveSettings.addEventListener('click', async () => {
       default_effort: selectedEffort,
       effort_level: selectedEffort,
       allow_overage_credits: allowOverage,
-      max_session_tokens: maxTokens
+      max_session_tokens: maxTokens,
+      compact_completed_chat: autoCompact
     };
     if (repoVal) {
       payload.default_repo = repoVal;
@@ -1144,3 +1163,25 @@ if (btnDoneCurrent) {
     }
   });
 }
+
+// Action: Manual Compact Current Chat
+const btnCompactCurrent = document.getElementById('btn-compact-current');
+if (btnCompactCurrent) {
+  btnCompactCurrent.addEventListener('click', async () => {
+    if (!activeSessionId) return;
+    btnCompactCurrent.disabled = true;
+    btnCompactCurrent.textContent = 'Compacting...';
+    try {
+      const res = await fetch(`/api/agents/${activeSessionId}/compact`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to compact chat');
+      showToast('Chat compacted and compressed successfully! Intermediate tokens condensed.');
+    } catch (err) {
+      alert('Error compacting chat: ' + err.message);
+    } finally {
+      btnCompactCurrent.disabled = false;
+      btnCompactCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg> Compact Chat`;
+    }
+  });
+}
+

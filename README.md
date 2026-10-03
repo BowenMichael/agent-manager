@@ -16,6 +16,7 @@ Agent Manager is an orchestration system built on the **Google Antigravity SDK**
   - Collapsible **Thinking & Reasoning** trace panels.
   - Structured **Tool Execution** cards with input parameters and outcomes.
 - **🛑 One-Click Stop**: Instantly halt runaway or stuck agents safely without orphan processes.
+- **📦 Enhanced Token Management & Auto-Compaction**: Automatically condenses verbose tool execution logs, terminal outputs, and reasoning traces upon process/turn completion while preserving user instructions and final deliverables. Cuts context footprint, eliminates UI clutter, and includes manual compaction controls.
 - **💬 Real-Time Context Injection**: Type new instructions, feedback, or clarifications and inject them directly into an active agent's live memory (`agent.chat()`) via WebSockets.
 - **🧪 Built-in Simulation**: Test webhooks and launch ad-hoc agents directly from the UI without needing external tunnels during local development.
 
@@ -107,6 +108,7 @@ Visit **`http://localhost:8000`** in your browser to open the Agent Manager Cont
 | `/api/agents/{id}` | `GET` | Returns full session details and message transcript |
 | `/api/agents/spawn` | `POST` | Spawns a new autonomous agent |
 | `/api/agents/{id}/stop` | `POST` | Stops an active agent session immediately |
+| `/api/agents/{id}/compact` | `POST` | Compacts and compresses verbose tool messages and thoughts |
 | `/api/agents/{id}/context` | `POST` | Injects additional context into a running agent |
 | `/ws/agents` | `WS` | Real-time bi-directional streaming WebSocket |
 

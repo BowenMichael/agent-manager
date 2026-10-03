@@ -63,6 +63,8 @@ class AgentSessionInfo(BaseModel):
     quota_message: Optional[str] = None
     seen_comment_ids: List[str] = Field(default_factory=list)
     last_issue_body: Optional[str] = None
+    is_compacted: bool = False
+    compact_summary: Optional[str] = None
 
 class SpawnRequest(BaseModel):
     repo: Optional[str] = None
@@ -96,5 +98,5 @@ class SettingsUpdateRequest(BaseModel):
     max_session_tokens: Optional[int] = None
     gemini_api_key: Optional[str] = None
     agy_mode: Optional[str] = None
+    compact_completed_chat: Optional[bool] = None
     default_repo: Optional[str] = None
-

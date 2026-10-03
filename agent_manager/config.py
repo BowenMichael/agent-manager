@@ -51,6 +51,7 @@ AGY_CLI_PATH = Path(os.environ.get("LOCALAPPDATA", r"C:\Users\tv\AppData\Local")
 AGY_MODE = (_saved_settings.get("agy_mode") or os.getenv("AGY_MODE", "terminal")).lower()
 
 MAX_SESSION_TOKENS = int(_saved_settings.get("max_session_tokens") or os.getenv("MAX_SESSION_TOKENS", "150000"))
+COMPACT_COMPLETED_CHAT = _saved_settings.get("compact_completed_chat") if "compact_completed_chat" in _saved_settings else (os.getenv("COMPACT_COMPLETED_CHAT", "true").lower() in ("true", "1", "yes"))
 
 AVAILABLE_MODELS = [
     {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Recommended)", "type": "Antigravity Subscription"},
