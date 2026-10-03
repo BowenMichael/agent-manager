@@ -261,6 +261,15 @@ function renderMessageItem(msg) {
   } else if (msg.role === 'THOUGHT') {
     bubble.className = 'msg-bubble msg-thought';
     bubble.innerHTML = `<span class="msg-role-tag">THINKING TRACE</span>${formatContent(msg.content)}`;
+  } else if (msg.role === 'TOOL_RESULT' || msg.tool_name === 'agy_terminal') {
+    bubble.className = 'msg-terminal';
+    bubble.innerHTML = `
+      <div class="terminal-header">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+        <span>AGY TERMINAL LOG</span>
+      </div>
+      <div class="terminal-body">${escapeHtml(msg.content)}</div>
+    `;
   } else if (msg.role === 'TOOL_CALL') {
     bubble.className = 'msg-tool';
     bubble.innerHTML = `

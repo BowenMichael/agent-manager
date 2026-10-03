@@ -260,22 +260,46 @@ class AgentRunnerManager:
                 )
                 self._active_agents[session_id] = proc
 
-                # Monitor process or queue
-                queue = self._context_queues[session_id]
-                while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED, AgentStatus.COMPLETED]:
-                    if proc.poll() is not None:
-                        session.status = AgentStatus.COMPLETED
-                        await self.broadcast("session_updated", session.model_dump())
-                        break
+                # Capture terminal stdout and stderr in real-time
+                stdout_text, stderr_text = proc.communicate(timeout=10)
+                if stdout_text and stdout_text.strip():
+                    await self._append_message(
+                        session_id,
+                        MessageRole.TOOL_RESULT,
+                        f"[AGY Terminal stdout]\n{stdout_text.strip()}",
+                        tool_name="agy_terminal"
+                    )
+                if stderr_text and stderr_text.strip():
+                    await self._append_message(
+                        session_id,
+                        MessageRole.TOOL_RESULT,
+                        f"[AGY Terminal stderr]\n{stderr_text.strip()}",
+                        tool_name="agy_terminal"
+                    )
 
+                await self._append_message(
+                    session_id,
+                    MessageRole.SYSTEM,
+                    f"[AGY Terminal] Process spawned (PID: {proc.pid}) with exit code {proc.returncode}."
+                )
+
+                # Monitor queue for added context
+                queue = self._context_queues[session_id]
+                while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED]:
                     try:
-                        next_ctx = await asyncio.wait_for(queue.get(), timeout=2.0)
-                        # Feed context via IDE chat command
-                        subprocess.Popen(
-                            [str(ANTIGRAVITY_IDE_CLI), "chat", "--mode", "agent", "--reuse-window", next_ctx],
-                            cwd=cwd_dir
-                        )
+                        next_ctx = await asyncio.wait_for(queue.get(), timeout=5.0)
                         await self._append_message(session_id, MessageRole.USER, next_ctx)
+                        # Feed context via IDE chat command
+                        p = subprocess.Popen(
+                            [str(ANTIGRAVITY_IDE_CLI), "chat", "--mode", "agent", "--reuse-window", next_ctx],
+                            cwd=cwd_dir,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True
+                        )
+                        out, err = p.communicate(timeout=10)
+                        if out and out.strip():
+                            await self._append_message(session_id, MessageRole.TOOL_RESULT, f"[Terminal Context Out] {out.strip()}", tool_name="agy_terminal")
                     except asyncio.TimeoutError:
                         pass
                 return
