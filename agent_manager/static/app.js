@@ -713,6 +713,14 @@ async function loadSettings() {
         }
       }
     }
+
+    // Target Repository
+    const inputRepo = document.getElementById('setting-default-repo');
+    const launchRepo = document.getElementById('launch-repo');
+    if (data.default_repo) {
+      if (inputRepo) inputRepo.value = data.default_repo;
+      if (launchRepo) launchRepo.value = data.default_repo;
+    }
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -729,12 +737,29 @@ btnBannerConfigure.addEventListener('click', () => {
 btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
 btnCancelSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
 
+const selectDefaultModelEl = document.getElementById('select-default-model');
+if (selectDefaultModelEl) {
+  selectDefaultModelEl.addEventListener('change', () => {
+    const badgeModel = document.getElementById('current-model-badge');
+    if (badgeModel) badgeModel.textContent = selectDefaultModelEl.value;
+  });
+}
+
+const selectDefaultEffortEl = document.getElementById('select-default-effort');
+if (selectDefaultEffortEl) {
+  selectDefaultEffortEl.addEventListener('change', () => {
+    const badgeEffort = document.getElementById('current-effort-badge');
+    if (badgeEffort) badgeEffort.textContent = selectDefaultEffortEl.value;
+  });
+}
+
 btnSaveSettings.addEventListener('click', async () => {
   const selectedMode = document.querySelector('input[name="agy_execution_mode"]:checked')?.value || 'web_stream';
   const selectedModel = document.getElementById('select-default-model')?.value || 'gemini-3.8-flash';
   const selectedEffort = document.getElementById('select-default-effort')?.value || 'high';
   const allowOverage = document.getElementById('check-allow-overage')?.checked ?? true;
   const maxTokens = parseInt(document.getElementById('input-max-tokens')?.value || '150000', 10);
+  const repoVal = document.getElementById('setting-default-repo')?.value?.trim();
   const key = inputGeminiKey?.value.trim();
 
   btnSaveSettings.disabled = true;
@@ -748,6 +773,9 @@ btnSaveSettings.addEventListener('click', async () => {
       allow_overage_credits: allowOverage,
       max_session_tokens: maxTokens
     };
+    if (repoVal) {
+      payload.default_repo = repoVal;
+    }
     if (key) {
       payload.gemini_api_key = key;
     }
@@ -782,8 +810,10 @@ btnSaveSettings.addEventListener('click', async () => {
   }
 });
 
+
 // Check on boot
 loadSettings();
+
 
 // Action: Sync Board
 const btnSyncBoard = document.getElementById('btn-sync-board');
