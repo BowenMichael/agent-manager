@@ -5,17 +5,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-PORT = int(os.getenv("PORT", "8000"))
-HOST = os.getenv("HOST", "0.0.0.0")
-GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-WORKSPACE_BASE = Path(os.getenv("WORKSPACE_BASE", "e:/~Michael Bowen/Projects"))
-DEFAULT_REPO = os.getenv("DEFAULT_REPO", "BowenMichael/f1-frontend")
-PROJECT_BOARD_ID = os.getenv("PROJECT_BOARD_ID", "PVT_kwHOAgkA3s4Blmhh")
-POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "15"))
-MAX_ACTIVE_AGENTS = int(os.getenv("MAX_ACTIVE_AGENTS", "5"))
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemini-3.8-flash")
-DEFAULT_EFFORT = os.getenv("DEFAULT_EFFORT", "high")
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+SETTINGS_FILE = DATA_DIR / "settings.json"
+_saved_settings = {}
+if SETTINGS_FILE.exists():
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as _f:
+            _saved_settings = json.load(_f) or {}
+    except Exception:
+        pass
+
+PORT = int(_saved_settings.get("PORT") or os.getenv("PORT", "8000"))
+HOST = _saved_settings.get("HOST") or os.getenv("HOST", "0.0.0.0")
+GITHUB_WEBHOOK_SECRET = _saved_settings.get("GITHUB_WEBHOOK_SECRET") or os.getenv("GITHUB_WEBHOOK_SECRET", "")
+GEMINI_API_KEY = _saved_settings.get("gemini_api_key") or _saved_settings.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "")
+WORKSPACE_BASE = Path(_saved_settings.get("WORKSPACE_BASE") or os.getenv("WORKSPACE_BASE", "e:/~Michael Bowen/Projects"))
+DEFAULT_REPO = _saved_settings.get("default_repo") or _saved_settings.get("DEFAULT_REPO") or os.getenv("DEFAULT_REPO", "BowenMichael/f1-frontend")
+PROJECT_BOARD_ID = _saved_settings.get("project_board_id") or _saved_settings.get("PROJECT_BOARD_ID") or os.getenv("PROJECT_BOARD_ID", "PVT_kwHOAgkA3s4Blmhh")
+POLL_INTERVAL_SECONDS = int(_saved_settings.get("poll_interval_seconds") or _saved_settings.get("POLL_INTERVAL_SECONDS") or os.getenv("POLL_INTERVAL_SECONDS", "15"))
+MAX_ACTIVE_AGENTS = int(_saved_settings.get("max_active_agents") or _saved_settings.get("MAX_ACTIVE_AGENTS") or os.getenv("MAX_ACTIVE_AGENTS", "5"))
+DEFAULT_MODEL = _saved_settings.get("default_model") or _saved_settings.get("DEFAULT_MODEL") or os.getenv("DEFAULT_MODEL", "gemini-3.8-flash")
+DEFAULT_EFFORT = (_saved_settings.get("effort_level") or _saved_settings.get("default_effort") or os.getenv("DEFAULT_EFFORT", "high")).lower()
 
 # Auto-detect GitHub PAT from environment or Antigravity MCP config
 GITHUB_PERSONAL_ACCESS_TOKEN = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN", "")
@@ -38,9 +48,9 @@ SUBSCRIPTION_MODE = os.getenv("SUBSCRIPTION_MODE", "true").lower() in ("true", "
 AGY_CLI_PATH = Path(os.environ.get("LOCALAPPDATA", r"C:\Users\tv\AppData\Local")) / "agy" / "bin" / "agy.exe"
 
 # Antigravity CLI Execution Mode: 'terminal' (Default Option 1) or 'web_stream' (Override Option 2)
-AGY_MODE = os.getenv("AGY_MODE", "terminal").lower()
+AGY_MODE = (_saved_settings.get("agy_mode") or os.getenv("AGY_MODE", "terminal")).lower()
 
-MAX_SESSION_TOKENS = int(os.getenv("MAX_SESSION_TOKENS", "150000"))
+MAX_SESSION_TOKENS = int(_saved_settings.get("max_session_tokens") or os.getenv("MAX_SESSION_TOKENS", "150000"))
 
 AVAILABLE_MODELS = [
     {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Recommended)", "type": "Antigravity Subscription"},

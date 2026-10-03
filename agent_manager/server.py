@@ -18,8 +18,10 @@ from agent_manager.models import (
     SimulateWebhookRequest, AgentSessionInfo, SettingsUpdateRequest
 )
 from agent_manager.runner import AgentRunnerManager
+from agent_manager.storage import save_settings, load_settings
 from agent_manager.webhooks import router as webhooks_router
 from agent_manager.poller import LocalGitWatcher
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -116,28 +118,42 @@ async def update_settings(req: SettingsUpdateRequest):
             new_lines.append(f"{key_name}={val}")
         lines = new_lines
 
+    current_persisted = load_settings()
+
+    if req.default_repo:
+        repo_val = req.default_repo.strip()
+        config.DEFAULT_REPO = repo_val
+        os.environ["DEFAULT_REPO"] = repo_val
+        set_env("DEFAULT_REPO", repo_val)
+        current_persisted["default_repo"] = repo_val
+
     effort_val = req.default_effort or req.effort_level
     if effort_val:
         eff_val = effort_val.strip().lower()
         config.DEFAULT_EFFORT = eff_val
         os.environ["DEFAULT_EFFORT"] = eff_val
         set_env("DEFAULT_EFFORT", eff_val)
+        current_persisted["effort_level"] = eff_val
+        current_persisted["default_effort"] = eff_val
 
     if req.default_model:
         model_val = req.default_model.strip()
         config.DEFAULT_MODEL = model_val
         os.environ["DEFAULT_MODEL"] = model_val
         set_env("DEFAULT_MODEL", model_val)
+        current_persisted["default_model"] = model_val
 
     if req.allow_overage_credits is not None:
         config.set_cli_overage_credits(req.allow_overage_credits)
         set_env("ALLOW_OVERAGE_CREDITS", str(req.allow_overage_credits).lower())
+        current_persisted["allow_overage_credits"] = req.allow_overage_credits
 
     if req.max_session_tokens:
         tok_val = int(req.max_session_tokens)
         config.MAX_SESSION_TOKENS = tok_val
         os.environ["MAX_SESSION_TOKENS"] = str(tok_val)
         set_env("MAX_SESSION_TOKENS", str(tok_val))
+        current_persisted["max_session_tokens"] = tok_val
 
     if req.agy_mode is not None:
         mode_val = req.agy_mode.strip().lower()
@@ -145,17 +161,20 @@ async def update_settings(req: SettingsUpdateRequest):
             config.AGY_MODE = mode_val
             os.environ["AGY_MODE"] = mode_val
             set_env("AGY_MODE", mode_val)
+            current_persisted["agy_mode"] = mode_val
 
     if req.gemini_api_key is not None:
         key_val = req.gemini_api_key.strip()
         config.GEMINI_API_KEY = key_val
         os.environ["GEMINI_API_KEY"] = key_val
         set_env("GEMINI_API_KEY", key_val)
+        current_persisted["gemini_api_key"] = key_val
 
     try:
         env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception as e:
         logger.warning(f"Could not persist to .env: {e}")
+    save_settings(current_persisted)
 
     result = {
         "status": "ok",
@@ -164,10 +183,13 @@ async def update_settings(req: SettingsUpdateRequest):
         "default_effort": config.DEFAULT_EFFORT,
         "allow_overage_credits": config.get_cli_overage_credits(),
         "max_session_tokens": config.MAX_SESSION_TOKENS,
-        "agy_mode": config.AGY_MODE
+        "agy_mode": config.AGY_MODE,
+        "default_repo": config.DEFAULT_REPO
     }
     await runner.broadcast("settings_updated", result)
     return result
+
+
 
 @app.get("/api/agents", response_model=list[AgentSessionInfo])
 async def list_agents():

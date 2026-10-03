@@ -60,3 +60,38 @@ def load_sessions() -> Dict[str, AgentSessionInfo]:
     except Exception as e:
         logger.error(f"Failed to load cached sessions from disk: {e}")
         return {}
+
+
+SETTINGS_FILE = DATA_DIR / "settings.json"
+
+def get_settings_path() -> Path:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return SETTINGS_FILE
+
+def load_settings() -> dict:
+    """Loads persistent settings from disk."""
+    settings_file = get_settings_path()
+    if not settings_file.exists():
+        return {}
+    try:
+        with open(settings_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            return {}
+    except Exception as e:
+        logger.error(f"Failed to load settings from disk: {e}")
+        return {}
+
+def save_settings(settings: dict):
+    """Persists settings to disk."""
+    try:
+        settings_file = get_settings_path()
+        temp_file = settings_file.with_suffix(".tmp")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2, ensure_ascii=False)
+        temp_file.replace(settings_file)
+        logger.debug(f"Saved settings to {settings_file}")
+    except Exception as e:
+        logger.error(f"Failed to persist settings to disk: {e}")
+
