@@ -8,7 +8,7 @@ from typing import Dict, Optional, Set, Any
 from pathlib import Path
 
 from fastapi import WebSocket
-from agent_manager.config import WORKSPACE_BASE, DEFAULT_REPO, DEFAULT_MODEL
+from agent_manager.config import WORKSPACE_BASE, DEFAULT_REPO, DEFAULT_MODEL, GEMINI_API_KEY
 from agent_manager.models import (
     AgentSessionInfo, AgentStatus, MessageRole,
     ConversationMessage, SpawnRequest
@@ -131,6 +131,13 @@ class AgentRunnerManager:
         if not session:
             return False
 
+        proc = self._active_agents.get(session_id)
+        if proc and hasattr(proc, 'terminate'):
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+
         task = self._tasks.get(session_id)
         if task and not task.done():
             task.cancel()
@@ -196,6 +203,55 @@ class AgentRunnerManager:
             session.status = AgentStatus.RUNNING
             await self.broadcast("session_updated", session.model_dump())
 
+            from agent_manager.config import ANTIGRAVITY_IDE_CLI, GEMINI_API_KEY, SUBSCRIPTION_MODE
+
+            # If no API key is provided or SUBSCRIPTION_MODE is active, leverage existing Antigravity subscription!
+            effective_key = GEMINI_API_KEY or os.getenv("GEMINI_API_KEY")
+            if not effective_key and ANTIGRAVITY_IDE_CLI.exists():
+                logger.info(f"Launching Antigravity IDE Agent via active Antigravity subscription for session {session_id}")
+                await self._append_message(
+                    session_id,
+                    MessageRole.SYSTEM,
+                    "Launched dedicated Antigravity Agent window using your active Antigravity subscription (Zero API Key)."
+                )
+
+                cwd_dir = worktree_path or str(WORKSPACE_BASE)
+                cmd = [
+                    str(ANTIGRAVITY_IDE_CLI),
+                    "chat",
+                    "--mode", "agent",
+                    "--new-window",
+                    initial_prompt
+                ]
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=cwd_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                self._active_agents[session_id] = proc
+
+                # Monitor process or queue
+                queue = self._context_queues[session_id]
+                while session.status not in [AgentStatus.STOPPED, AgentStatus.FAILED, AgentStatus.COMPLETED]:
+                    if proc.poll() is not None:
+                        session.status = AgentStatus.COMPLETED
+                        await self.broadcast("session_updated", session.model_dump())
+                        break
+
+                    try:
+                        next_ctx = await asyncio.wait_for(queue.get(), timeout=2.0)
+                        # Feed context via IDE chat command
+                        subprocess.Popen(
+                            [str(ANTIGRAVITY_IDE_CLI), "chat", "--mode", "agent", "--reuse-window", next_ctx],
+                            cwd=cwd_dir
+                        )
+                        await self._append_message(session_id, MessageRole.USER, next_ctx)
+                    except asyncio.TimeoutError:
+                        pass
+                return
+
             from google.antigravity import Agent, LocalAgentConfig, CapabilitiesConfig
 
             workspaces = [worktree_path] if worktree_path else None
@@ -210,11 +266,12 @@ class AgentRunnerManager:
             config = LocalAgentConfig(
                 system_instructions=system_instructions,
                 capabilities=CapabilitiesConfig(),
+                api_key=effective_key,
                 workspaces=workspaces,
                 conversation_id=str(uuid.uuid4())
             )
 
-            logger.info(f"Launching Antigravity Agent for session {session_id}")
+            logger.info(f"Launching Antigravity Agent via Gemini API for session {session_id}")
             async with Agent(config) as agent:
                 self._active_agents[session_id] = agent
                 

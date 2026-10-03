@@ -1,3 +1,4 @@
+from typing import Optional
 import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -7,6 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from agent_manager.config import STATIC_DIR
+from pydantic import BaseModel
+import os
 from agent_manager.models import (
     SpawnRequest, AddContextRequest, StopAgentRequest,
     SimulateWebhookRequest, AgentSessionInfo
@@ -50,6 +53,50 @@ runner = AgentRunnerManager()
 app.include_router(webhooks_router)
 
 # REST Endpoints
+class SettingsUpdateRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+    default_repo: Optional[str] = None
+
+@app.get("/api/settings")
+async def get_settings():
+    from agent_manager import config
+    key = config.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
+    masked_key = (key[:6] + "..." + key[-4:]) if len(key) > 10 else ("Set" if key else "")
+    return {
+        "has_gemini_api_key": bool(key),
+        "masked_gemini_api_key": masked_key,
+        "default_repo": config.DEFAULT_REPO,
+        "project_board_id": config.PROJECT_BOARD_ID
+    }
+
+@app.post("/api/settings")
+async def update_settings(req: SettingsUpdateRequest):
+    import agent_manager.config as config
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    
+    lines = []
+    if env_file.exists():
+        lines = env_file.read_text(encoding="utf-8").splitlines()
+
+    if req.gemini_api_key is not None:
+        key_val = req.gemini_api_key.strip()
+        config.GEMINI_API_KEY = key_val
+        os.environ["GEMINI_API_KEY"] = key_val
+        # Update .env
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.startswith("GEMINI_API_KEY="):
+                new_lines.append(f"GEMINI_API_KEY={key_val}")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"GEMINI_API_KEY={key_val}")
+        env_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+    return {"status": "ok", "has_gemini_api_key": bool(config.GEMINI_API_KEY)}
+
 @app.get("/api/agents", response_model=list[AgentSessionInfo])
 async def list_agents():
     return runner.list_sessions()

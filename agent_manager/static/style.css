@@ -715,3 +715,32 @@ body {
 
 .hidden { display: none !important; }
 .font-mono { font-family: var(--font-mono); }
+
+/* API Key Banner */
+.api-key-banner {
+  background: linear-gradient(90deg, #78350f 0%, #451a03 100%);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fef3c7;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  z-index: 9;
+}
+
+.btn-banner-action {
+  background: var(--accent-amber);
+  color: #000;
+  border: none;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn-banner-action:hover {
+  opacity: 0.9;
+}

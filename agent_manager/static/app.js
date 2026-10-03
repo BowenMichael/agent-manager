@@ -453,3 +453,75 @@ function formatContent(str) {
 
 // Initial Boot
 connectWebSocket();
+
+// Settings Modal Logic
+const modalSettings = document.getElementById('modal-settings');
+const btnSettingsModal = document.getElementById('btn-settings-modal');
+const btnCloseSettings = document.getElementById('btn-close-settings');
+const btnCancelSettings = document.getElementById('btn-cancel-settings');
+const btnSaveSettings = document.getElementById('btn-save-settings');
+const inputGeminiKey = document.getElementById('input-gemini-key');
+const keyStatusDisplay = document.getElementById('key-status-display');
+const apiKeyBanner = document.getElementById('api-key-banner');
+const btnBannerConfigure = document.getElementById('btn-banner-configure');
+
+async function checkApiKeyStatus() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    if (data.has_gemini_api_key) {
+      apiKeyBanner.classList.add('hidden');
+      keyStatusDisplay.textContent = 'Active: ' + data.masked_gemini_api_key;
+      keyStatusDisplay.style.color = 'var(--accent-green)';
+    } else {
+      apiKeyBanner.classList.remove('hidden');
+      keyStatusDisplay.textContent = 'Not configured';
+      keyStatusDisplay.style.color = 'var(--accent-amber)';
+    }
+  } catch (e) {
+    console.error('Failed to fetch settings:', e);
+  }
+}
+
+btnSettingsModal.addEventListener('click', () => {
+  modalSettings.classList.remove('hidden');
+  checkApiKeyStatus();
+});
+btnBannerConfigure.addEventListener('click', () => {
+  modalSettings.classList.remove('hidden');
+  checkApiKeyStatus();
+});
+btnCloseSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
+btnCancelSettings.addEventListener('click', () => modalSettings.classList.add('hidden'));
+
+btnSaveSettings.addEventListener('click', async () => {
+  const key = inputGeminiKey.value.trim();
+  if (!key) {
+    alert('Please enter a valid Gemini API Key');
+    return;
+  }
+  btnSaveSettings.disabled = true;
+  btnSaveSettings.textContent = 'Saving...';
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gemini_api_key: key })
+    });
+    const data = await res.json();
+    if (data.has_gemini_api_key) {
+      alert('Gemini API Key saved successfully!');
+      modalSettings.classList.add('hidden');
+      inputGeminiKey.value = '';
+      checkApiKeyStatus();
+    }
+  } catch (err) {
+    alert('Failed to save settings: ' + err.message);
+  } finally {
+    btnSaveSettings.disabled = false;
+    btnSaveSettings.textContent = 'Save API Key';
+  }
+});
+
+// Check on boot
+checkApiKeyStatus();
