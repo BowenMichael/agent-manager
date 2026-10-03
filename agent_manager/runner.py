@@ -334,6 +334,21 @@ class AgentRunnerManager:
                             step = event_obj.get("step_update", {})
                             stype = step.get("step_type")
                             sstate = step.get("state")
+
+                            # Capture live token usage metrics
+                            usage = step.get("usage")
+                            if usage:
+                                session.input_tokens = usage.get("input_tokens", session.input_tokens)
+                                session.output_tokens = usage.get("output_tokens", session.output_tokens)
+                                session.thinking_tokens = usage.get("thinking_tokens", session.thinking_tokens)
+                                session.cache_read_tokens = usage.get("cache_read_tokens", session.cache_read_tokens)
+                                session.total_tokens = usage.get("total_tokens", session.total_tokens)
+                                session.token_count = session.total_tokens
+                                await self.broadcast("session_updated", session.model_dump())
+
+                            if "duration_seconds" in step:
+                                session.duration_seconds = step.get("duration_seconds", session.duration_seconds)
+
                             if stype == "tool":
                                 tname = step.get("tool_name", "tool")
                                 tinfo = step.get("tool_info", {})
@@ -361,8 +376,23 @@ class AgentRunnerManager:
                         elif ev == "result":
                             res_info = event_obj.get("result", {})
                             final_resp = res_info.get("response", "Agent finished task.")
+
+                            # Capture final result usage metrics
+                            final_usage = res_info.get("usage")
+                            if final_usage:
+                                session.input_tokens = final_usage.get("input_tokens", session.input_tokens)
+                                session.output_tokens = final_usage.get("output_tokens", session.output_tokens)
+                                session.thinking_tokens = final_usage.get("thinking_tokens", session.thinking_tokens)
+                                session.cache_read_tokens = final_usage.get("cache_read_tokens", session.cache_read_tokens)
+                                session.total_tokens = final_usage.get("total_tokens", session.total_tokens)
+                                session.token_count = session.total_tokens
+
+                            if "duration_seconds" in res_info:
+                                session.duration_seconds = res_info.get("duration_seconds", session.duration_seconds)
+
                             await self._append_message(session_id, MessageRole.AGENT, final_resp)
                             session.status = AgentStatus.COMPLETED
+                            await self.broadcast("session_updated", session.model_dump())
                     except Exception as json_err:
                         logger.debug(f"JSON stream line parse info: {json_err}")
 

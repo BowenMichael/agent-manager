@@ -41,6 +41,12 @@ class AgentSessionInfo(BaseModel):
     updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     turn_count: int = 0
     token_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    thinking_tokens: int = 0
+    cache_read_tokens: int = 0
+    total_tokens: int = 0
+    duration_seconds: float = 0.0
     messages: List[ConversationMessage] = []
     error_message: Optional[str] = None
     agy_mode: str = "terminal"

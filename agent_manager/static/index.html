@@ -158,30 +158,181 @@
             </div>
           </div>
 
-          <!-- Live Feed Transcript Container -->
-          <div class="transcript-viewport" id="transcript-viewport">
-            <div class="transcript-stream" id="transcript-stream">
-              <!-- Dynamically populated messages, thoughts, and tool cards -->
-            </div>
-            <div class="stream-anchor" id="stream-anchor"></div>
-          </div>
+          <!-- Split Screen: Live Logs & Chat (Left) + High-Level Overview (Right) -->
+          <div class="console-body-split">
+            <!-- Left Pane: Live Stream of Logs, Tool Executions, and Chat -->
+            <div class="stream-main-pane">
+              <div class="stream-header-strip">
+                <div class="strip-left">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                  <span>Live Tool & Execution Stream</span>
+                </div>
+                <div class="strip-right">
+                  <span class="pulse-indicator"><span class="dot"></span> LIVE LOGS</span>
+                </div>
+              </div>
 
-          <!-- Bottom Context Injection Bar -->
-          <div class="context-bar">
-            <div class="context-input-wrapper">
-              <textarea 
-                id="context-input" 
-                placeholder="Inject additional context, instructions, or clarifications into this active agent... (Ctrl+Enter to send)"
-                rows="2"
-              ></textarea>
-              <button class="btn btn-primary btn-send-context" id="btn-send-context">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                Send Context
-              </button>
+              <div class="transcript-viewport" id="transcript-viewport">
+                <div class="transcript-stream" id="transcript-stream">
+                  <!-- Dynamically populated messages, thoughts, and tool cards -->
+                </div>
+                <div class="stream-anchor" id="stream-anchor"></div>
+              </div>
+
+              <div class="context-bar">
+                <div class="context-input-wrapper">
+                  <textarea 
+                    id="context-input" 
+                    placeholder="Inject additional context, instructions, or clarifications into this active agent... (Ctrl+Enter to send)"
+                    rows="2"
+                  ></textarea>
+                  <button class="btn btn-primary btn-send-context" id="btn-send-context">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    Send Context
+                  </button>
+                </div>
+                <div class="context-helper">
+                  <span>Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to submit instructions directly into agent's active memory.</span>
+                  <span id="turn-counter">Turns: 0 • Tokens: 0</span>
+                </div>
+              </div>
             </div>
-            <div class="context-helper">
-              <span>Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to submit instructions directly into agent's active memory.</span>
-              <span id="turn-counter">Turns: 0 • Tokens: 0</span>
+
+            <!-- Right Pane: Live Agent Activity & Mission Control Overview -->
+            <div class="agent-overview-pane" id="agent-overview-pane">
+              <!-- Current Activity Highlight -->
+              <div class="overview-box current-activity-box">
+                <div class="overview-box-header">
+                  <span class="overview-label">CURRENT ACTIVITY</span>
+                  <span class="badge-activity-running" id="overview-badge">EXECUTING</span>
+                </div>
+                <div class="activity-summary-text" id="overview-activity-summary">
+                  Agent initialized. Analyzing task objective and codebase...
+                </div>
+                <div class="activity-sub-detail font-mono" id="overview-activity-sub">
+                  Tool: initializing
+                </div>
+              </div>
+
+              <!-- Workflow Progress Milestones -->
+              <div class="overview-box">
+                <div class="overview-box-header">
+                  <span class="overview-label">WORKFLOW MILESTONES</span>
+                </div>
+                <div class="milestone-timeline">
+                  <div class="milestone-step step-done" id="ms-step-issue">
+                    <div class="ms-marker">✓</div>
+                    <div class="ms-content">
+                      <div class="ms-title">Issue Requirements</div>
+                      <div class="ms-desc">Loaded criteria & AGENTS.md rules</div>
+                    </div>
+                  </div>
+                  <div class="milestone-step step-done" id="ms-step-worktree">
+                    <div class="ms-marker">✓</div>
+                    <div class="ms-content">
+                      <div class="ms-title">Isolated Worktree</div>
+                      <div class="ms-desc font-mono" id="ms-branch-text">branch active</div>
+                    </div>
+                  </div>
+                  <div class="milestone-step step-active" id="ms-step-exec">
+                    <div class="ms-marker"><span class="ms-pulse"></span></div>
+                    <div class="ms-content">
+                      <div class="ms-title">Autonomous Implementation</div>
+                      <div class="ms-desc" id="ms-tool-progress">Actively running tools</div>
+                    </div>
+                  </div>
+                  <div class="milestone-step step-pending" id="ms-step-verify">
+                    <div class="ms-marker">○</div>
+                    <div class="ms-content">
+                      <div class="ms-title">Verification & Tests</div>
+                      <div class="ms-desc">Build validation & logs suppression</div>
+                    </div>
+                  </div>
+                  <div class="milestone-step step-pending" id="ms-step-pr">
+                    <div class="ms-marker">○</div>
+                    <div class="ms-content">
+                      <div class="ms-title">Pull Request & Sync</div>
+                      <div class="ms-desc">Push branch & submit PR for review</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+                            <!-- Usage & Token Telemetry -->
+              <div class="overview-box usage-metrics-box">
+                <div class="overview-box-header">
+                  <span class="overview-label">ANTIGRAVITY USAGE</span>
+                  <span class="usage-badge-free">SUBSCRIPTION ACTIVE</span>
+                </div>
+
+                <div class="usage-primary-stat">
+                  <div class="usage-total-number" id="usage-total-tokens">0</div>
+                  <div class="usage-total-label">Total Tokens Processed</div>
+                </div>
+
+                <div class="usage-breakdown-grid">
+                  <div class="usage-sub-stat">
+                    <span class="sub-stat-lbl">Input</span>
+                    <span class="sub-stat-val font-mono" id="usage-input-tokens">0</span>
+                  </div>
+                  <div class="usage-sub-stat">
+                    <span class="sub-stat-lbl">Output</span>
+                    <span class="sub-stat-val font-mono" id="usage-output-tokens">0</span>
+                  </div>
+                  <div class="usage-sub-stat">
+                    <span class="sub-stat-lbl">Reasoning</span>
+                    <span class="sub-stat-val font-mono" id="usage-thinking-tokens">0</span>
+                  </div>
+                  <div class="usage-sub-stat">
+                    <span class="sub-stat-lbl">Duration</span>
+                    <span class="sub-stat-val font-mono" id="usage-duration">0s</span>
+                  </div>
+                </div>
+
+                <div class="subscription-rate-note">
+                  <span>Billing:</span>
+                  <span style="color: var(--accent-green); font-weight: 600;">Included in Subscription ($0.00)</span>
+                </div>
+              </div>
+
+              <!-- Tools & Telemetry Overview -->
+              <div class="overview-box">
+                <div class="overview-box-header">
+                  <span class="overview-label">EXECUTION TELEMETRY</span>
+                </div>
+                <div class="telemetry-stats-grid">
+                  <div class="stat-cell">
+                    <div class="stat-val" id="stat-tool-calls">0</div>
+                    <div class="stat-lbl">Tools Used</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-val" id="stat-cmds-run">0</div>
+                    <div class="stat-lbl">Commands</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-val" id="stat-files-touched">0</div>
+                    <div class="stat-lbl">Files Inspected</div>
+                  </div>
+                  <div class="stat-cell">
+                    <div class="stat-val" id="stat-agent-turns">0</div>
+                    <div class="stat-lbl">Agent Turns</div>
+                  </div>
+                </div>
+
+                <div class="tools-tags-container" id="tools-tags-container">
+                  <!-- Tool tags rendered here -->
+                </div>
+              </div>
+
+              <!-- Recent Actions Feed -->
+              <div class="overview-box">
+                <div class="overview-box-header">
+                  <span class="overview-label">RECENT ACTIONS</span>
+                </div>
+                <ul class="recent-actions-list" id="recent-actions-list">
+                  <li class="action-item-empty">Listening for agent actions...</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
