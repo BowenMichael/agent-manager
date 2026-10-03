@@ -99,3 +99,4 @@ class SettingsUpdateRequest(BaseModel):
     gemini_api_key: Optional[str] = None
     agy_mode: Optional[str] = None
     compact_completed_chat: Optional[bool] = None
+    default_repo: Optional[str] = None
