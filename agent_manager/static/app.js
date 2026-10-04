@@ -946,6 +946,62 @@ async function loadSettings() {
       checkAutoCompact.checked = data.compact_completed_chat;
     }
 
+    const checkGuardrails = document.getElementById('check-guardrails-enabled');
+    const guardrailsStatus = document.getElementById('guardrails-toggle-status');
+    const guardrailsWarning = document.getElementById('guardrails-warning-note');
+    const topbarGuardrailsBadge = document.getElementById('badge-guardrails-status');
+
+    function updateGuardrailsUI(enabled) {
+      if (guardrailsStatus) {
+        if (enabled) {
+          guardrailsStatus.textContent = 'Active';
+          guardrailsStatus.style.background = 'rgba(16, 185, 129, 0.15)';
+          guardrailsStatus.style.color = '#34d399';
+          guardrailsStatus.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+        } else {
+          guardrailsStatus.textContent = 'Disabled';
+          guardrailsStatus.style.background = 'rgba(239, 68, 68, 0.2)';
+          guardrailsStatus.style.color = '#f87171';
+          guardrailsStatus.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+        }
+      }
+      if (guardrailsWarning) {
+        if (enabled) {
+          guardrailsWarning.classList.add('hidden');
+        } else {
+          guardrailsWarning.classList.remove('hidden');
+        }
+      }
+      if (topbarGuardrailsBadge) {
+        if (enabled) {
+          topbarGuardrailsBadge.classList.add('hidden');
+        } else {
+          topbarGuardrailsBadge.classList.remove('hidden');
+        }
+      }
+    }
+
+    if (checkGuardrails) {
+      const isEnabled = typeof data.guardrails_enabled === 'boolean' ? data.guardrails_enabled : true;
+      checkGuardrails.checked = isEnabled;
+      updateGuardrailsUI(isEnabled);
+
+      if (!checkGuardrails.dataset.listenerBound) {
+        checkGuardrails.dataset.listenerBound = 'true';
+        checkGuardrails.addEventListener('change', () => {
+          updateGuardrailsUI(checkGuardrails.checked);
+        });
+      }
+    }
+
+    if (topbarGuardrailsBadge && !topbarGuardrailsBadge.dataset.listenerBound) {
+      topbarGuardrailsBadge.dataset.listenerBound = 'true';
+      topbarGuardrailsBadge.addEventListener('click', () => {
+        modalSettings.classList.remove('hidden');
+        loadSettings();
+      });
+    }
+
     const checkWorkflowPipeline = document.getElementById('check-workflow-pipeline');
     if (checkWorkflowPipeline && typeof data.workflow_pipeline_enabled === 'boolean') {
       checkWorkflowPipeline.checked = data.workflow_pipeline_enabled;
@@ -1020,6 +1076,9 @@ async function loadSettings() {
   }
 }
 
+// Initial settings load on page startup
+loadSettings();
+
 btnSettingsModal.addEventListener('click', () => {
   modalSettings.classList.remove('hidden');
   loadSettings();
@@ -1054,6 +1113,7 @@ btnSaveSettings.addEventListener('click', async () => {
   const allowOverage = document.getElementById('check-allow-overage')?.checked ?? true;
   const maxTokens = parseInt(document.getElementById('input-max-tokens')?.value || '150000', 10);
   const autoCompact = document.getElementById('check-auto-compact')?.checked ?? true;
+  const guardrailsEnabled = document.getElementById('check-guardrails-enabled')?.checked ?? true;
   const workflowPipeline = document.getElementById('check-workflow-pipeline')?.checked ?? false;
   const sumModel = document.getElementById('select-pipeline-sum-model')?.value || 'gemini-3.8-flash';
   const sumEffort = document.getElementById('select-pipeline-sum-effort')?.value || 'low';
@@ -1075,6 +1135,7 @@ btnSaveSettings.addEventListener('click', async () => {
       allow_overage_credits: allowOverage,
       max_session_tokens: maxTokens,
       compact_completed_chat: autoCompact,
+      guardrails_enabled: guardrailsEnabled,
       workflow_pipeline_enabled: workflowPipeline,
       pipeline_summary_model: sumModel,
       pipeline_summary_effort: sumEffort,

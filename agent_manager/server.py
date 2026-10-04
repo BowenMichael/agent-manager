@@ -105,6 +105,7 @@ async def get_settings():
         "is_server": getattr(config, "IS_SERVER", False),
         "cli_idle_timeout_minutes": getattr(config, "CLI_IDLE_TIMEOUT_MINUTES", 30),
         "workflow_pipeline_enabled": getattr(config, "WORKFLOW_PIPELINE_ENABLED", False),
+        "guardrails_enabled": getattr(config, "GUARDRAILS_ENABLED", True),
         "pipeline_summary_model": getattr(config, "PIPELINE_SUMMARY_MODEL", "gemini-3.8-flash"),
         "pipeline_summary_effort": getattr(config, "PIPELINE_SUMMARY_EFFORT", "low"),
         "pipeline_planning_model": getattr(config, "PIPELINE_PLANNING_MODEL", "gemini-3.1-pro"),
@@ -216,6 +217,13 @@ async def update_settings(req: SettingsUpdateRequest):
         set_env("WORKFLOW_PIPELINE_ENABLED", str(req.workflow_pipeline_enabled).lower())
         current_persisted["workflow_pipeline_enabled"] = bool(req.workflow_pipeline_enabled)
 
+    if req.guardrails_enabled is not None:
+        val = bool(req.guardrails_enabled)
+        config.GUARDRAILS_ENABLED = val
+        os.environ["GUARDRAILS_ENABLED"] = str(val).lower()
+        set_env("GUARDRAILS_ENABLED", str(val).lower())
+        current_persisted["guardrails_enabled"] = val
+
     if req.pipeline_summary_model:
         val = req.pipeline_summary_model.strip()
         config.PIPELINE_SUMMARY_MODEL = val
@@ -277,6 +285,7 @@ async def update_settings(req: SettingsUpdateRequest):
         "is_server": config.IS_SERVER,
         "cli_idle_timeout_minutes": config.CLI_IDLE_TIMEOUT_MINUTES,
         "workflow_pipeline_enabled": config.WORKFLOW_PIPELINE_ENABLED,
+        "guardrails_enabled": config.GUARDRAILS_ENABLED,
         "pipeline_summary_model": config.PIPELINE_SUMMARY_MODEL,
         "pipeline_summary_effort": config.PIPELINE_SUMMARY_EFFORT,
         "pipeline_planning_model": config.PIPELINE_PLANNING_MODEL,
