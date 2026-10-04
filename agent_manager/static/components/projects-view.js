@@ -3,8 +3,9 @@
  * Multi-Project Portfolio View Web Component for Agent Manager.
  */
 
-import { renderProjectsTable, escapeHtml } from './projects-table.js';
-import { openNewProjectIssueModal } from './project-new-modal.js';
+const escapeHtml = (str) => (window.escapeHtml ? window.escapeHtml(str) : (str || ''));
+const renderProjectsTable = (...args) => (window.renderProjectsTable ? window.renderProjectsTable(...args) : '');
+const openNewProjectIssueModal = (...args) => (window.openNewProjectIssueModal ? window.openNewProjectIssueModal(...args) : null);
 
 class ProjectsView extends HTMLElement {
   constructor() {

@@ -1508,6 +1508,11 @@ body {
 .link-pill:hover {
   color: var(--accent-cyan);
 }
+.link-pill.active {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+}
 
 /* Agent Activity Status Bar & Hang Indicator */
 .agent-activity-bar {

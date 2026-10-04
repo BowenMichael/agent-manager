@@ -3,7 +3,7 @@
  * Modal dialog for creating new GitHub issues across projects directly from the Project View.
  */
 
-export function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreated = null) {
+function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreated = null) {
   let modal = document.getElementById('modal-new-project-issue');
   if (!modal) {
     modal = document.createElement('div');
@@ -116,3 +116,5 @@ export function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', o
 
   modal.classList.remove('hidden');
 }
+
+window.openNewProjectIssueModal = openNewProjectIssueModal;

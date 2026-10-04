@@ -121,6 +121,11 @@ function renderSessionsList() {
 function showDashboardView() {
   window.activeSessionId = null;
   document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
+  const btnHeaderProjects = document.getElementById('btn-header-projects');
+  const btnShowProjects = document.getElementById('btn-show-projects');
+  if (btnHeaderProjects) btnHeaderProjects.classList.remove('active');
+  if (btnShowProjects) btnShowProjects.classList.remove('active');
+
   const consoleActive = document.getElementById('console-active');
   const consoleEmpty = document.getElementById('console-empty');
   const globalDashboard = document.getElementById('global-dashboard');
@@ -138,6 +143,11 @@ function showDashboardView() {
 function showProjectsView() {
   window.activeSessionId = null;
   document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
+  const btnHeaderProjects = document.getElementById('btn-header-projects');
+  const btnShowProjects = document.getElementById('btn-show-projects');
+  if (btnHeaderProjects) btnHeaderProjects.classList.add('active');
+  if (btnShowProjects) btnShowProjects.classList.add('active');
+
   const consoleActive = document.getElementById('console-active');
   const consoleEmpty = document.getElementById('console-empty');
   const globalDashboard = document.getElementById('global-dashboard');
@@ -157,6 +167,11 @@ function showProjectsView() {
 function selectSession(sessionId) {
   window.activeSessionId = sessionId;
   window.currentStreamingBubble = null;
+
+  const btnHeaderProjects = document.getElementById('btn-header-projects');
+  const btnShowProjects = document.getElementById('btn-show-projects');
+  if (btnHeaderProjects) btnHeaderProjects.classList.remove('active');
+  if (btnShowProjects) btnShowProjects.classList.remove('active');
 
   document.querySelectorAll('.session-card').forEach(c => {
     c.classList.toggle('selected', c.dataset.id === sessionId);

@@ -190,7 +190,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof window.initModals === 'function') window.initModals();
   if (typeof window.loadSettings === 'function') window.loadSettings();
 
-  connectWebSocket();
+  if (typeof window.connectWebSocket === 'function') {
+    window.connectWebSocket();
+  }
 });
 
 window.showQuotaToast = showQuotaToast;

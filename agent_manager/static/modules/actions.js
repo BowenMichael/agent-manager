@@ -230,13 +230,28 @@ function initActionButtons() {
   }
 
   const btnShowDashboard = document.getElementById('btn-show-dashboard');
-  if (btnShowDashboard) btnShowDashboard.addEventListener('click', showDashboardView);
+  if (btnShowDashboard) {
+    btnShowDashboard.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.showDashboardView === 'function') window.showDashboardView();
+    });
+  }
 
   const btnShowProjects = document.getElementById('btn-show-projects');
-  if (btnShowProjects) btnShowProjects.addEventListener('click', showProjectsView);
+  if (btnShowProjects) {
+    btnShowProjects.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.showProjectsView === 'function') window.showProjectsView();
+    });
+  }
 
   const btnHeaderProjects = document.getElementById('btn-header-projects');
-  if (btnHeaderProjects) btnHeaderProjects.addEventListener('click', showProjectsView);
+  if (btnHeaderProjects) {
+    btnHeaderProjects.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.showProjectsView === 'function') window.showProjectsView();
+    });
+  }
 }
 
 window.archiveAgent = archiveAgent;

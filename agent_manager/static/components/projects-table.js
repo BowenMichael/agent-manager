@@ -3,7 +3,7 @@
  * Modular table row and column renderer for the Projects View.
  */
 
-export function getStatusClass(statusStr) {
+function getStatusClass(statusStr) {
   const s = String(statusStr || '').toLowerCase();
   if (s.includes('ready')) return 'pv-tag-ready';
   if (s.includes('progress')) return 'pv-tag-progress';
@@ -12,7 +12,7 @@ export function getStatusClass(statusStr) {
   return 'pv-tag-backlog';
 }
 
-export function escapeHtml(str) {
+function escapeHtml(str) {
   if (!str) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -22,7 +22,7 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-export function renderAgentCell(item) {
+function renderAgentCell(item) {
   const sess = item.active_session;
   if (!sess) {
     return `<span style="color: var(--text-muted); font-size: 0.78rem;">Idle</span>`;
@@ -47,7 +47,7 @@ export function renderAgentCell(item) {
   `;
 }
 
-export function renderWorktreeCell(item) {
+function renderWorktreeCell(item) {
   const sess = item.active_session;
   const branch = sess?.branch || `feat/issue-${item.number}`;
   const hasWt = item.has_local_worktree;
@@ -62,7 +62,7 @@ export function renderWorktreeCell(item) {
   `;
 }
 
-export function renderPrCell(item) {
+function renderPrCell(item) {
   const sess = item.active_session;
   const prUrl = sess?.pr_url;
   const prNum = sess?.pr_number;
@@ -77,7 +77,7 @@ export function renderPrCell(item) {
   return `<span style="color: var(--text-muted); font-size: 0.78rem;">—</span>`;
 }
 
-export function renderTableRow(item, isAllProjectsView) {
+function renderTableRow(item, isAllProjectsView) {
   const statusCls = getStatusClass(item.status);
   const repoName = item.repo.split('/')[1] || item.repo;
 
@@ -123,7 +123,7 @@ export function renderTableRow(item, isAllProjectsView) {
   `;
 }
 
-export function renderProjectsTable(items, isAllProjectsView, activeFilter, searchQuery) {
+function renderProjectsTable(items, isAllProjectsView, activeFilter, searchQuery) {
   let filtered = [...items];
 
   if (activeFilter && activeFilter !== 'all') {
@@ -182,3 +182,11 @@ export function renderProjectsTable(items, isAllProjectsView, activeFilter, sear
     </div>
   `;
 }
+
+window.getStatusClass = getStatusClass;
+window.escapeHtml = escapeHtml;
+window.renderProjectsTable = renderProjectsTable;
+window.renderTableRow = renderTableRow;
+window.renderAgentCell = renderAgentCell;
+window.renderWorktreeCell = renderWorktreeCell;
+window.renderPrCell = renderPrCell;
