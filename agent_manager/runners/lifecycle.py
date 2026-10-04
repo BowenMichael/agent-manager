@@ -8,6 +8,7 @@ from agent_manager.models import (
 import agent_manager.config as config
 from agent_manager.config import COMPACT_COMPLETED_CHAT
 from agent_manager.runners.process_manager import terminate_process
+from agent_manager.services.dispatch_trigger import fire_dispatch_hook
 
 logger = logging.getLogger("agent_manager.runners.lifecycle")
 
@@ -45,6 +46,7 @@ async def stop_agent(manager, session_id: str, reason: str = "Stopped by user") 
     manager._save()
     await manager.broadcast("session_updated", session.model_dump())
     logger.info(f"Agent {session_id} stopped: {reason}")
+    fire_dispatch_hook()
     return True
 
 
@@ -141,6 +143,7 @@ async def complete_agent(manager, session_id: str, reason: str = "Issue moved to
     manager._save()
     await manager.broadcast("session_updated", session.model_dump())
     logger.info(f"Agent {session_id} completed: {reason}")
+    fire_dispatch_hook()
     return True
 
 
@@ -175,6 +178,7 @@ async def archive_agent(manager, session_id: str) -> bool:
     manager._save()
     await manager.broadcast("session_updated", session.model_dump())
     logger.info(f"Agent {session_id} archived.")
+    fire_dispatch_hook()
     return True
 
 

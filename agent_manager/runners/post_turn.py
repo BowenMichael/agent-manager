@@ -5,6 +5,7 @@ from agent_manager.formatters.comments import (
     BADGE_AGENT_UPDATE
 )
 from agent_manager.github import post_issue_comment
+from agent_manager.services.dispatch_trigger import fire_dispatch_hook
 import agent_manager.config as config
 
 logger = logging.getLogger("agent_manager.runners.post_turn")
@@ -70,3 +71,5 @@ async def handle_post_process(manager, session, proc=None, returncode: int = 0):
                         await manager.complete_agent(session.session_id, reason="PR already merged on GitHub")
             except Exception as e:
                 logger.error(f"Failed to auto-merge PR or mark issue as done: {e}")
+
+    fire_dispatch_hook()

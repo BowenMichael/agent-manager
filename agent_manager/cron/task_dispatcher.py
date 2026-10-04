@@ -89,7 +89,7 @@ async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]
                     "status": status_name
                 }
 
-                if "In Progress" in status_name or "Ready for Agent" in status_name:
+                if "In Progress" in status_name or "Ready for Agent" in status_name or "In Review" in status_name:
                     active_items.append(item_data)
                 elif "Backlog" in status_name:
                     backlog_items.append(item_data)
