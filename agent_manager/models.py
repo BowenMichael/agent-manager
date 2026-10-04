@@ -41,6 +41,8 @@ class AgentSessionInfo(BaseModel):
     session_id: str
     repo: str
     issue_number: Optional[int] = None
+    pr_url: Optional[str] = None
+    pr_number: Optional[int] = None
     title: str
     status: AgentStatus = AgentStatus.INITIALIZING
     worktree_path: Optional[str] = None

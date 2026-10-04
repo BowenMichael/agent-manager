@@ -555,6 +555,9 @@ function updateActiveSessionView(session) {
 
   currentTitle.textContent = session.title;
   currentRepo.textContent = session.repo;
+  if (typeof updateGitHubHeaderLinks === 'function') {
+    updateGitHubHeaderLinks(session);
+  }
   currentBranch.textContent = session.git_branch || 'main';
   currentWorktree.textContent = session.worktree_path ? session.worktree_path.split(/[\\/]/).slice(-2).join('/') : 'in-repo';
   turnCounter.textContent = `Turns: ${session.turn_count || 0} • Tokens: ${session.token_count || 0}`;

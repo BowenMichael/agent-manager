@@ -80,5 +80,28 @@ class TestAgentSummaryOverview(unittest.TestCase):
         self.assertEqual(item["status"], "PAUSED")
         self.assertEqual(item["quota_percent"], 100.0)
 
+    def test_agent_issue_and_pr_links_serialization(self):
+        session_info = AgentSessionInfo(
+            session_id="test-session-pr",
+            repo="BowenMichael/agent-manager",
+            issue_number=33,
+            pr_url="https://github.com/BowenMichael/agent-manager/pull/54",
+            pr_number=54,
+            title="Add issue and PR links",
+            status=AgentStatus.RUNNING
+        )
+        runner.sessions["test-session-pr"] = session_info
+
+        res = self.client.get("/api/agents")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(len(data), 1)
+
+        item = data[0]
+        self.assertEqual(item["issue_number"], 33)
+        self.assertEqual(item["pr_url"], "https://github.com/BowenMichael/agent-manager/pull/54")
+        self.assertEqual(item["pr_number"], 54)
+
 if __name__ == "__main__":
     unittest.main()
+

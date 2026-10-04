@@ -105,11 +105,20 @@ class AgentSummaryOverview extends HTMLElement {
     const duration = this.formatDuration(s.duration_seconds);
     const activity = s.current_activity || 'IDLE';
 
+    const repo = this.escapeHtml(s.repo || 'unknown');
+    const issueNum = s.issue_number;
+    const issueLink = issueNum && s.repo
+      ? `<a href="https://github.com/${repo}/issues/${issueNum}" target="_blank" rel="noopener noreferrer" class="summary-issue-link" onclick="event.stopPropagation()">#${issueNum}</a>`
+      : `#${issueNum || 'ADHOC'}`;
+    const prBadge = s.pr_url
+      ? `<a href="${this.escapeHtml(s.pr_url)}" target="_blank" rel="noopener noreferrer" class="summary-pr-badge" onclick="event.stopPropagation()" title="Open Pull Request">${s.pr_number ? `PR #${s.pr_number} ↗` : 'PR ↗'}</a>`
+      : '';
+
     return `
       <div class="summary-card ${isStalled ? 'stalled' : ''}" data-session-id="${this.escapeHtml(s.session_id)}">
         <div class="summary-card-header">
           <div class="summary-card-title-area">
-            <div class="summary-card-id">#${s.issue_number || 'ADHOC'} • ${this.escapeHtml(s.repo || 'unknown')}</div>
+            <div class="summary-card-id">${issueLink} • ${repo} ${prBadge}</div>
             <div class="summary-card-title" title="${this.escapeHtml(s.title || '')}">${this.escapeHtml(s.title || 'Untitled Session')}</div>
           </div>
           <div class="summary-card-badges">
