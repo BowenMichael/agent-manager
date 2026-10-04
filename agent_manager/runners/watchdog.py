@@ -5,6 +5,7 @@ from datetime import datetime
 from agent_manager.models import AgentStatus, ConversationMessage, MessageRole
 import agent_manager.config as config
 from agent_manager.config import IS_SERVER, CLI_IDLE_TIMEOUT_MINUTES
+from agent_manager.runners.process_manager import terminate_process
 
 logger = logging.getLogger("agent_manager.runners.watchdog")
 
@@ -49,6 +50,11 @@ async def start_watchdog(manager):
                                         except Exception:
                                             pass
                                     manager._active_agents.pop(sid, None)
+                                if s.pid:
+                                    try:
+                                        terminate_process(s.pid)
+                                    except Exception:
+                                        pass
                                     s.status = AgentStatus.IDLE
                                     s.current_activity = f"💤 Idle CLI instance closed after {timeout_mins}m inactivity."
                                     await manager._append_message(
@@ -78,6 +84,12 @@ async def interrupt_agent(manager, session_id: str) -> bool:
         except Exception:
             pass
         manager._active_agents.pop(session_id, None)
+
+    if session.pid:
+        try:
+            terminate_process(session.pid)
+        except Exception:
+            pass
 
     task = manager._tasks.get(session_id)
     if task and not task.done():

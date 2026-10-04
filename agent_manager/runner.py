@@ -29,6 +29,8 @@ from agent_manager.runners.spawner import (
 from agent_manager.runners.pipeline import run_workflow_pipeline
 from agent_manager.runners.cli_turn import run_cli_turn
 from agent_manager.runners.orchestrator import run_agent_loop
+from agent_manager.runners.process_manager import is_process_alive, terminate_process
+from agent_manager.runners.stream_tailer import tail_agent_log
 
 logger = logging.getLogger("agent_manager.runner")
 
@@ -53,6 +55,21 @@ class AgentRunnerManager:
 
         for sid in self.sessions:
             self._context_queues[sid] = asyncio.Queue()
+
+        self._reattach_active_sessions()
+
+    def _reattach_active_sessions(self):
+        """Discovers and reattaches to running background agent processes on server startup."""
+        for sid, s in self.sessions.items():
+            if s.status == AgentStatus.RUNNING and s.pid:
+                if is_process_alive(s.pid):
+                    logger.info(f"Reattaching to active detached agent session {sid} (PID: {s.pid})")
+                    task = asyncio.create_task(tail_agent_log(self, sid, clean_model=s.model or ""))
+                    self._tasks[sid] = task
+                else:
+                    logger.info(f"Detached agent session {sid} (PID: {s.pid}) is no longer active.")
+                    task = asyncio.create_task(tail_agent_log(self, sid, clean_model=s.model or ""))
+                    self._tasks[sid] = task
 
     def _save(self):
         try:
@@ -196,6 +213,12 @@ class AgentRunnerManager:
             except Exception:
                 pass
             self._active_agents.pop(session_id, None)
+
+        if current_mode != "terminal" and session.pid:
+            try:
+                terminate_process(session.pid)
+            except Exception:
+                pass
 
         task = self._tasks.get(session_id)
         if task and not task.done():

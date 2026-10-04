@@ -9,11 +9,24 @@ from agent_manager.formatters.comments import (
     format_agent_comment,
     BADGE_AGENT_PAUSED
 )
+from agent_manager.runners.process_manager import terminate_process
 
 logger = logging.getLogger("agent_manager.runners.stream")
 
 
-async def handle_tool_call_stream(manager, session, step, sstate, cwd_dir, proc) -> bool:
+def _terminate_agent(session, proc=None):
+    if proc is not None and hasattr(proc, 'terminate'):
+        try:
+            if getattr(proc, 'returncode', None) is None:
+                proc.terminate()
+                return
+        except Exception:
+            pass
+    if session and getattr(session, 'pid', None):
+        terminate_process(session.pid)
+
+
+async def handle_tool_call_stream(manager, session, step, sstate, cwd_dir, proc=None) -> bool:
     tname = step.get("tool_name", "tool")
     tinfo = step.get("tool_info", {})
 
@@ -51,11 +64,7 @@ async def handle_tool_call_stream(manager, session, step, sstate, cwd_dir, proc)
                 f"Circuit Breaker Triggered: Repetitive tool loop detected. "
                 f"'{tname}' was called {session.consecutive_duplicate_tool_count} consecutive times with identical arguments."
             )
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
+            _terminate_agent(session, proc)
 
             await manager._append_message(
                 session.session_id,
@@ -112,11 +121,7 @@ async def handle_tool_call_stream(manager, session, step, sstate, cwd_dir, proc)
                 f"Circuit Breaker Triggered: Excessive consecutive file reads "
                 f"({session.consecutive_view_file_count} view_file calls without editing code or running commands)."
             )
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
+            _terminate_agent(session, proc)
 
             await manager._append_message(
                 session.session_id,
@@ -139,11 +144,7 @@ async def handle_tool_call_stream(manager, session, step, sstate, cwd_dir, proc)
             )
             session.status = AgentStatus.PAUSED
             session.error_message = f"Turn Budget Limit reached ({session.turn_count} / {max_turns_limit} turns)."
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
+            _terminate_agent(session, proc)
 
             await manager._append_message(
                 session.session_id,

@@ -85,6 +85,10 @@ class AgentSessionInfo(BaseModel):
     workflow_stage: WorkflowStage = WorkflowStage.DIRECT
     pipeline_summary: Optional[str] = None
     pipeline_plan: Optional[str] = None
+    pid: Optional[int] = None
+    stream_log_file: Optional[str] = None
+    exit_code_file: Optional[str] = None
+    stream_log_offset: int = 0
 
 
 class SpawnRequest(BaseModel):

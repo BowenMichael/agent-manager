@@ -7,6 +7,7 @@ from agent_manager.models import (
 )
 import agent_manager.config as config
 from agent_manager.config import COMPACT_COMPLETED_CHAT
+from agent_manager.runners.process_manager import terminate_process
 
 logger = logging.getLogger("agent_manager.runners.lifecycle")
 
@@ -20,6 +21,13 @@ async def stop_agent(manager, session_id: str, reason: str = "Stopped by user") 
     if proc and hasattr(proc, 'terminate'):
         try:
             proc.terminate()
+        except Exception:
+            pass
+    manager._active_agents.pop(session_id, None)
+
+    if session.pid:
+        try:
+            terminate_process(session.pid)
         except Exception:
             pass
 
