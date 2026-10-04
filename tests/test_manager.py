@@ -630,6 +630,9 @@ class TestAgentManager(unittest.TestCase):
                     self.assertEqual(turns_run[1]["model"], "gemini-3.1-pro")
                     self.assertEqual(turns_run[1]["effort"], "high")
 
+                    # Verify Stage 2 prompt included Codebase Context
+                    self.assertIn("Codebase Context", turns_run[1]["prompt"])
+
                     # Verify Stage 3 was triggered via _run_agent_loop
                     mock_agent_loop.assert_awaited_once()
                     call_args = mock_agent_loop.call_args[0]
@@ -645,6 +648,12 @@ class TestAgentManager(unittest.TestCase):
             self.client.post(f"/api/agents/{session_id}/stop")
 
         asyncio.run(run_test())
+
+    def test_get_repository_context(self):
+        """Verifies get_repository_context extracts directory structure, configs, and git history."""
+        from agent_manager.runner import get_repository_context
+        ctx = get_repository_context(".")
+        self.assertIn("Directory Structure", ctx)
 
     def test_is_empty_or_template_only(self):
         """Verifies template-only detector flags empty or boilerplate-only issue bodies."""

@@ -401,6 +401,7 @@ class LocalGitWatcher:
                                 f"- SEARCH FIRST: Always use grep_search to find exact symbol, function, or line locations BEFORE calling view_file.\n"
                                 f"- SLICE READING ONLY: When calling view_file, ALWAYS supply StartLine and EndLine (max 100 lines at once). NEVER view entire large files over 200 lines.\n"
                                 f"- NEVER RE-READ: Do NOT call view_file on the same file or line range twice in a row. Rely on context and proceed directly to code edits or tests.\n"
+                                f"- ANTI-MONOLITH RULE: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files (models, services, utils, components). When modifying large files (>300 lines), extract new functions into separate helper files.\n"
                                 f"- CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
                                 f"- Follow AGENTS.md rules and keep documentation updated.\n"
                                 f"- CRITICAL RULE: Do NOT add, remove, or modify GitHub issue labels/tags. Status transitions are managed purely on the GitHub Project Board columns.\n"

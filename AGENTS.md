@@ -118,3 +118,26 @@ When a threshold or circuit breaker is reached, execution is halted automaticall
 ## 4. Chat Lifecycle & Re-Queued Task Ingestion
 - **Chat Stays Open Until 'Done'**: Agent sessions and chats must remain open and interactive in `IN_REVIEW` for continuous user feedback, questions, and testing until the card is explicitly moved to `✅ Done` on the Project Board.
 - **Re-Queued Task Ingestion**: When an issue is moved back into `📋 Ready for Agent`, the system automatically inspects the issue for new user comments or requirement edits and feeds them into the existing agent session as continuation context in its active worktree.
+
+---
+
+## 5. 🧱 Modular Architecture & Strict Anti-Monolith Directives (Mandatory)
+
+To prevent LLM context saturation, token bloat, and self-attention repetition loops:
+
+1. **Zero New Monolithic Files**:
+   - Never create single files exceeding **250 lines of code**.
+   - Always decompose features across dedicated, modular files adhering to the Single-Responsibility Principle:
+     - `models/` or `types/` for data structures and interfaces.
+     - `services/` or `domain/` for business logic and algorithms.
+     - `components/` for visual UI elements (keep subcomponents in separate files).
+     - `utils/` or `helpers/` for standalone functions.
+2. **Decompose When Modifying Existing Monoliths**:
+   - If an existing file exceeds **300 lines**, DO NOT append large new blocks of code directly into it.
+   - Extract new helper functions, sub-components, or utility classes into separate modular files, importing them into the larger file.
+3. **No Monolithic File Inspection**:
+   - Never dump entire monolithic files into context via un-sliced `view_file`.
+   - Always use `grep_search` to pinpoint target symbols, and read with sliced ranges (`StartLine`/`EndLine`, max 100 lines).
+4. **Architectural Planning Stage Requirement**:
+   - In Stage 2 (Architecture Planning), the planner model MUST design a modular file structure with explicit file paths rather than planning additions into a single monolithic file.
+

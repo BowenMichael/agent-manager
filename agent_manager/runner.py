@@ -91,6 +91,60 @@ def format_tool_display(tool_name: str, tool_args: Optional[dict] = None) -> tup
     desc = ", ".join(params_summary) if params_summary else f"Executing {name}"
     return title, desc
 
+def get_repository_context(cwd_dir: str) -> str:
+    """
+    Gathers key repository architecture context (directory structure, manifest files,
+    configs, and recent git history) to inject into the Stage 2 planning prompt.
+    """
+    import subprocess
+    from pathlib import Path
+
+    context_lines = []
+    root = Path(cwd_dir)
+    if not root.exists():
+        return "Repository directory not found."
+
+    # 1. Top-level files and directories (excluding noise)
+    excluded = {".git", ".worktrees", "node_modules", ".next", "dist", "build", "__pycache__", ".venv", "venv", ".idea", ".vscode"}
+    try:
+        entries = sorted([p.name + ("/" if p.is_dir() else "") for p in root.iterdir() if p.name not in excluded and not p.name.startswith(".")])
+        if entries:
+            context_lines.append(f"**Directory Structure (Top Level)**:\n`{'`, `'.join(entries)}`")
+    except Exception as e:
+        context_lines.append(f"Directory listing error: {e}")
+
+    # 2. Key configuration and manifest inspection
+    configs_to_check = [
+        "package.json", "vercel.json", "next.config.js", "next.config.mjs",
+        "tsconfig.json", "requirements.txt", "pyproject.toml", "Dockerfile", "render.yaml"
+    ]
+    for cfg in configs_to_check:
+        cfg_path = root / cfg
+        if cfg_path.exists() and cfg_path.is_file():
+            try:
+                content = cfg_path.read_text(encoding="utf-8", errors="replace").strip()
+                if len(content) > 1500:
+                    content = content[:1500] + "\n... (truncated)"
+                context_lines.append(f"**Configuration File (`{cfg}`)**:\n```\n{content}\n```")
+            except Exception:
+                pass
+
+    # 3. Recent git commits for context
+    try:
+        res = subprocess.run(
+            ["git", "log", "-n", "3", "--oneline"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            context_lines.append(f"**Recent Git History**:\n```\n{res.stdout.strip()}\n```")
+    except Exception:
+        pass
+
+    return "\n\n".join(context_lines) if context_lines else "No additional repository context discovered."
+
 class AgentRunnerManager:
     _instance: Optional["AgentRunnerManager"] = None
 
@@ -612,6 +666,7 @@ class AgentRunnerManager:
     async def _run_cli_turn(self, session_id: str, prompt: str, cwd_dir: str, model: str, effort: str) -> str:
         """Runs a single prompt turn via Antigravity CLI and returns the generated text response."""
         from agent_manager.config import AGY_CLI_PATH, resolve_model_and_effort
+        session = self.sessions[session_id]
         clean_model, clean_effort, cli_model_args = resolve_model_and_effort(model, effort)
         cmd_args = [
             str(AGY_CLI_PATH),
@@ -628,6 +683,7 @@ class AgentRunnerManager:
         )
         self._active_agents[session_id] = proc
         accumulated_text = []
+        accumulated_thought = []
 
         while True:
             line_bytes = await proc.stdout.readline()
@@ -642,21 +698,56 @@ class AgentRunnerManager:
                 if ev == "step_update":
                     step = event_obj.get("step_update", {})
                     stype = step.get("step_type")
-                    if stype == "agent_response":
+
+                    # Live Token Usage
+                    usage = step.get("usage")
+                    if usage:
+                        session.input_tokens = usage.get("input_tokens", session.input_tokens)
+                        session.output_tokens = usage.get("output_tokens", session.output_tokens)
+                        session.thinking_tokens = usage.get("thinking_tokens", session.thinking_tokens)
+                        session.total_tokens = usage.get("total_tokens", session.total_tokens)
+                        session.token_count = session.total_tokens
+                        self._save()
+                        await self.broadcast("session_updated", session.model_dump())
+
+                    if stype == "thought":
+                        delta = step.get("text_delta")
+                        if delta:
+                            accumulated_thought.append(delta)
+                            await self.broadcast("thought_delta", {"session_id": session_id, "delta": delta})
+                            recent_thought = "".join(accumulated_thought).strip()[-80:].replace("\n", " ")
+                            session.current_activity = f"Planning ({clean_model}): {recent_thought}..."
+                            await self.broadcast("session_updated", session.model_dump())
+
+                    elif stype == "agent_response":
                         delta = step.get("text_delta")
                         if delta:
                             accumulated_text.append(delta)
                             await self._broadcast_token(session_id, delta)
+
                 elif ev == "result":
                     res_info = event_obj.get("result", {})
                     final_txt = res_info.get("response")
                     if final_txt:
                         accumulated_text = [final_txt]
+                    final_usage = res_info.get("usage")
+                    if final_usage:
+                        session.input_tokens = final_usage.get("input_tokens", session.input_tokens)
+                        session.output_tokens = final_usage.get("output_tokens", session.output_tokens)
+                        session.thinking_tokens = final_usage.get("thinking_tokens", session.thinking_tokens)
+                        session.total_tokens = final_usage.get("total_tokens", session.total_tokens)
+                        session.token_count = session.total_tokens
             except Exception:
                 pass
 
         await proc.wait()
         self._active_agents.pop(session_id, None)
+
+        if accumulated_thought:
+            full_thought = "".join(accumulated_thought).strip()
+            if full_thought:
+                await self._append_message(session_id, MessageRole.THOUGHT, full_thought)
+
         return "".join(accumulated_text).strip()
 
     async def _run_workflow_pipeline(self, session_id: str, task_description: str, cwd_dir: str, issue_num: int, branch_name: str):
@@ -719,12 +810,17 @@ class AgentRunnerManager:
         session.model = plan_model
         session.effort = plan_effort
         session.current_activity = f"Stage 2/3: Formulating plan ({plan_model} / {plan_effort})..."
+
+        # Gather repository architecture & codebase context
+        repo_context = get_repository_context(cwd_dir)
+
         await self._append_message(
             session_id,
             MessageRole.SYSTEM,
-            f"🧠 **Pipeline Stage 2/3: High-Reasoning Planning**\n"
-            f"Using smart model: `{plan_model}` (effort: `{plan_effort}`)\n"
-            f"Formulating architectural execution plan based on Stage 1 summary..."
+            f"🧠 **Pipeline Stage 2/3: High-Reasoning Planning**\n\n"
+            f"**Model**: `{plan_model}` (effort: `{plan_effort}`)\n"
+            f"**Context Injected**: Directory manifest, configuration files, and git history from `{cwd_dir}`.\n\n"
+            f"Formulating architectural execution plan based on Stage 1 summary and repository structure..."
         )
         self._save()
         await self.broadcast("session_updated", session.model_dump())
@@ -733,9 +829,10 @@ class AgentRunnerManager:
             f"You are a principal software architect. You are planning the implementation for GitHub Issue #{issue_num} in {cwd_dir}.\n\n"
             f"### Issue Requirements Summary:\n{session.pipeline_summary}\n\n"
             f"### Original Task Description:\n{task_description}\n\n"
+            f"### Codebase Context (Repository Structure & Configurations):\n{repo_context}\n\n"
             f"Create a step-by-step implementation plan including:\n"
-            f"1. Architecture & Design Blueprint\n"
-            f"2. Exact Files to Modify / Create\n"
+            f"1. Architecture & Design Blueprint (referencing existing project files)\n"
+            f"2. Exact Files to Modify / Create (STRICT ANTI-MONOLITH: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files)\n"
             f"3. Implementation Steps (ordered)\n"
             f"4. Verification & Testing Strategy (with command log suppression)\n"
             f"Make the instructions unambiguous for the implementation model."
@@ -748,6 +845,7 @@ class AgentRunnerManager:
             f"📐 **Stage 2 Plan Deliverable**:\n\n{session.pipeline_plan}"
         )
         self._save()
+
         await self.broadcast("session_updated", session.model_dump())
 
         # STAGE 3: IMPLEMENTATION (Dumb Model)
@@ -821,9 +919,10 @@ class AgentRunnerManager:
                 f"   - SEARCH FIRST: Always use grep_search to find exact symbol, function, or line locations BEFORE calling view_file.\n"
                 f"   - SLICE READING ONLY: When calling view_file, ALWAYS supply StartLine and EndLine (max 100 lines at once). NEVER view entire large files over 200 lines.\n"
                 f"   - NEVER RE-READ: Do NOT call view_file on the same file or line range twice in a row. Rely on context and proceed directly to code edits or tests.\n"
-                f"4. CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
-                f"5. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
-                f"6. Once changes are ready, commit and create a pull request if appropriate.\n"
+                f"4. ANTI-MONOLITH RULE: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files (models, services, utils, components). When modifying large files (>300 lines), extract new functions into separate helper files.\n"
+                f"5. CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
+                f"6. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
+                f"7. Once changes are ready, commit and create a pull request if appropriate.\n"
             )
 
             # Option 1: Terminal Mode
