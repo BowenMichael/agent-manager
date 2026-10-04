@@ -82,13 +82,14 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
 
             if "Ready for Agent" in to_name or "ready" in to_name.lower():
                 # Extract issue details or fallback to default repo
+                repo = payload.get("repository", {}).get("full_name", DEFAULT_REPO)
                 issue_number = item.get("content_node_id") # May require query or metadata
                 prompt = (
                     f"An issue on the Project Board was moved to '📋 Ready for Agent'.\n"
                     f"Please review the Project Board, inspect the card details, and execute the task following AGENTS.md."
                 )
                 req = SpawnRequest(
-                    repo=DEFAULT_REPO,
+                    repo=repo,
                     title="Board Card: Ready for Agent",
                     prompt=prompt
                 )

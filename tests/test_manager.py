@@ -49,6 +49,9 @@ class TestAgentManager(unittest.TestCase):
         data = res.json()
         self.assertEqual(data.get("action"), "agent_spawned")
         self.assertIn("session_id", data)
+        session = self.runner.get_session(data["session_id"])
+        self.assertIsNotNone(session)
+        self.assertEqual(session.repo, "BowenMichael/f1-frontend")
 
     def test_webhook_ignored_when_not_ready(self):
         payload = {

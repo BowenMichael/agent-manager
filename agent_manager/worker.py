@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent_manager.config import WORKSPACE_BASE
+from agent_manager.utils.workspace import find_local_workspace
 
 def log(msg: str):
     print(f"[*] {msg}", flush=True)
@@ -51,17 +52,7 @@ def main():
     step("Phase 1: Validating isolated git worktree...")
     worktree_path = Path(args.worktree)
     if not worktree_path.exists():
-        repo_name = args.repo.split('/')[-1]
-        candidate_dirs = [
-            WORKSPACE_BASE / repo_name,
-            WORKSPACE_BASE / "F1 Front End" / repo_name,
-            Path.cwd()
-        ]
-        repo_dir = None
-        for cand in candidate_dirs:
-            if cand.exists() and (cand / ".git").exists():
-                repo_dir = cand
-                break
+        repo_dir = find_local_workspace(args.repo)
         if repo_dir:
             log(f"Setting up worktree on branch '{args.branch}'...")
             run_cmd(f'git worktree add -B "{args.branch}" "{worktree_path}" HEAD', str(repo_dir))
