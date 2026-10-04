@@ -37,14 +37,23 @@ query($projectId: ID!) {
 """
 
 
-async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+async def fetch_board_items_per_project() -> Dict[str, Dict[str, Any]]:
     """
     Fetches items from configured GitHub Project Boards and categorizes
-    them into active_items and backlog_items.
+    them into active_items and backlog_items, grouped by project_id.
+    Returns:
+        Dict[str, Dict[str, Any]]: {
+            project_id: {
+                "project_id": str,
+                "board_title": str,
+                "active_items": List[Dict[str, Any]],
+                "backlog_items": List[Dict[str, Any]],
+            }
+        }
     """
     if not GITHUB_PERSONAL_ACCESS_TOKEN:
         logger.warning("[Cron Dispatcher] No GitHub Personal Access Token configured. Skipping.")
-        return [], []
+        return {}
 
     headers = {
         "Authorization": f"Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}",
@@ -52,11 +61,16 @@ async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]
         "User-Agent": "AgentManagerCron/1.0"
     }
 
-    active_items = []
-    backlog_items = []
+    projects_data: Dict[str, Dict[str, Any]] = {}
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         for bid in PROJECT_BOARD_IDS:
+            projects_data[bid] = {
+                "project_id": bid,
+                "board_title": bid,
+                "active_items": [],
+                "backlog_items": [],
+            }
             resp = await client.post(
                 "https://api.github.com/graphql",
                 json={"query": GRAPHQL_QUERY, "variables": {"projectId": bid}},
@@ -68,6 +82,8 @@ async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]
 
             node = resp.json().get("data", {}).get("node", {}) or {}
             board_title = node.get("title", bid)
+            projects_data[bid]["board_title"] = board_title
+
             for item in node.get("items", {}).get("nodes", []):
                 content = item.get("content") or {}
                 status_name = None
@@ -90,10 +106,24 @@ async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]
                 }
 
                 if "In Progress" in status_name or "Ready for Agent" in status_name or "In Review" in status_name:
-                    active_items.append(item_data)
+                    projects_data[bid]["active_items"].append(item_data)
                 elif "Backlog" in status_name:
-                    backlog_items.append(item_data)
+                    projects_data[bid]["backlog_items"].append(item_data)
 
+    return projects_data
+
+
+async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Fetches items from configured GitHub Project Boards and categorizes
+    them into global active_items and backlog_items (backwards compatibility).
+    """
+    projects_data = await fetch_board_items_per_project()
+    active_items: List[Dict[str, Any]] = []
+    backlog_items: List[Dict[str, Any]] = []
+    for pdata in projects_data.values():
+        active_items.extend(pdata.get("active_items", []))
+        backlog_items.extend(pdata.get("backlog_items", []))
     return active_items, backlog_items
 
 

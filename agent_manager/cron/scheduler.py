@@ -5,7 +5,15 @@ from typing import Optional, List, Dict, Any
 
 from agent_manager.poller import LocalGitWatcher
 from agent_manager.cron.updater import check_and_update_agent_manager
-from agent_manager.cron.task_dispatcher import fetch_board_items, promote_backlog_issue
+from agent_manager.cron.task_dispatcher import (
+    fetch_board_items,
+    fetch_board_items_per_project,
+    promote_backlog_issue,
+)
+from agent_manager.cron.evaluator import (
+    inspect_active_local_agents,
+    evaluate_and_dispatch_projects,
+)
 from agent_manager.config import GITHUB_PERSONAL_ACCESS_TOKEN
 
 logger = logging.getLogger("agent_manager.cron.scheduler")
@@ -33,97 +41,58 @@ class ProjectBacklogDispatcher:
 
     async def check_and_dispatch(self) -> Dict[str, Any]:
         """
-        1. FIRST THING: If no agents are running, checks if agent-manager is on latest version of main and updates it.
-        2. Checks if any agents are actively running or initializing locally. If so, skips dispatch.
-        3. Checks GitHub project boards for active issues in progress or ready for agent.
-        4. If no active issues exist, takes one issue from the backlog and marks it 'Ready for Agent'.
-        5. If backlog is empty, does nothing.
+        Evaluates active tasks on a per-project/board basis and promotes backlog items:
+        1. Checks if agent-manager is on the latest version of main and updates it (if no agents running).
+        2. Inspects local active agent sessions (running/initializing).
+        3. Evaluates active issues and running agents per project board.
+        4. If a project has no active work in progress, selects and promotes one issue from its backlog.
+        5. Projects with active work are skipped without blocking idle projects.
         """
         self.last_run_at = datetime.now(timezone.utc).isoformat()
 
-        # Check local runner for active agents
-        active_local_agents = []
-        try:
-            from agent_manager.runner import AgentRunnerManager
-            from agent_manager.models import AgentStatus
-
-            runner = AgentRunnerManager()
-            for s in runner.list_sessions(include_archived=False):
-                if s.status in (AgentStatus.RUNNING, AgentStatus.INITIALIZING):
-                    active_local_agents.append(s.session_id)
-            if getattr(runner, "_active_agents", None):
-                for sid, proc in runner._active_agents.items():
-                    if proc and getattr(proc, "returncode", None) is None:
-                        if sid not in active_local_agents:
-                            active_local_agents.append(sid)
-        except Exception as e:
-            logger.warning(f"[Cron Dispatcher] Could not inspect local agent sessions: {e}")
-
-        if active_local_agents:
-            msg = f"Local active agent(s) detected ({len(active_local_agents)} active: {active_local_agents}). Skipping backlog promotion."
-            logger.info(f"[Cron Dispatcher] {msg}")
-            result = {
-                "status": "agents_running",
-                "message": msg,
-                "active_agent_count": len(active_local_agents),
-                "active_agents": active_local_agents
-            }
-            self.dispatch_history.append({"timestamp": self.last_run_at, **result})
-            return result
-
+        active_local_agents, active_local_issue_keys = inspect_active_local_agents()
         update_result = await self.check_and_update_agent_manager()
 
-        logger.info("[Cron Dispatcher] Checking project boards for active / ready issues...")
+        logger.info("[Cron Dispatcher] Checking project boards for active / ready issues per project...")
 
         if not GITHUB_PERSONAL_ACCESS_TOKEN:
             return {"status": "error", "message": "Missing GITHUB_PERSONAL_ACCESS_TOKEN", "update_result": update_result}
 
         try:
-            active_items, backlog_items = await fetch_board_items()
+            # Fetch board items grouped per project
+            boards_data = await fetch_board_items_per_project()
+            if not boards_data:
+                # Fallback to fetch_board_items if fetch_board_items_per_project returns empty or is mocked
+                active_items, backlog_items = await fetch_board_items()
+                # Group them if flat lists were returned
+                boards_data = {}
+                for item in active_items:
+                    pid = item.get("project_id", "default")
+                    if pid not in boards_data:
+                        boards_data[pid] = {
+                            "project_id": pid,
+                            "board_title": item.get("board_title", pid),
+                            "active_items": [],
+                            "backlog_items": [],
+                        }
+                    boards_data[pid]["active_items"].append(item)
+                for item in backlog_items:
+                    pid = item.get("project_id", "default")
+                    if pid not in boards_data:
+                        boards_data[pid] = {
+                            "project_id": pid,
+                            "board_title": item.get("board_title", pid),
+                            "active_items": [],
+                            "backlog_items": [],
+                        }
+                    boards_data[pid]["backlog_items"].append(item)
 
-            if active_items:
-                active_desc = [f"#{x['issue_number']} ({x['status']})" for x in active_items]
-                msg = f"Active issue(s) detected: {', '.join(active_desc)}. Skipping backlog promotion."
-                logger.info(f"[Cron Dispatcher] {msg}")
-                result = {
-                    "status": "active_issue_present",
-                    "message": msg,
-                    "active_count": len(active_items),
-                    "active_items": active_items,
-                    "backlog_count": len(backlog_items)
-                }
-                self.dispatch_history.append({"timestamp": self.last_run_at, **result})
-                return result
-
-            if not backlog_items:
-                msg = "No backlog items found across project boards. Nothing to dispatch."
-                logger.info(f"[Cron Dispatcher] {msg}")
-                result = {
-                    "status": "backlog_empty",
-                    "message": msg,
-                    "active_count": 0,
-                    "backlog_count": 0
-                }
-                self.dispatch_history.append({"timestamp": self.last_run_at, **result})
-                return result
-
-            chosen = backlog_items[0]
-            success, msg = await promote_backlog_issue(self.watcher, chosen)
-
-            if success:
-                result = {
-                    "status": "dispatched",
-                    "message": msg,
-                    "promoted_issue": chosen,
-                    "remaining_backlog_count": len(backlog_items) - 1
-                }
-            else:
-                result = {
-                    "status": "error",
-                    "message": msg,
-                    "attempted_issue": chosen
-                }
-
+            result = await evaluate_and_dispatch_projects(
+                boards_data,
+                active_local_issue_keys,
+                self.watcher,
+                promote_backlog_issue
+            )
             self.dispatch_history.append({"timestamp": self.last_run_at, **result})
             return result
 
