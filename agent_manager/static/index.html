@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/static/components/agent-summary-overview.css">
   <link rel="stylesheet" href="/static/components/cron-view.css?v=20261004f">
   <link rel="stylesheet" href="/static/components/projects-view.css?v=20261004f">
+  <link rel="stylesheet" href="/static/components/telemetry-view.css?v=20261004h">
 </head>
 <body>
   <div class="app-layout">
@@ -59,6 +60,10 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
           Cron Runs
         </button>
+        <button class="btn btn-secondary link-pill" id="btn-header-telemetry" title="View Detailed Agent Telemetry & Optimization Reports">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          Telemetry
+        </button>
         <a href="https://github.com/users/BowenMichael/projects/3" target="_blank" class="btn btn-secondary link-pill" title="Open GitHub Project Board">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
           Project Board
@@ -75,10 +80,6 @@
         <button class="btn btn-secondary" id="btn-settings-modal">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
           Settings
-        </button>
-        <button class="btn btn-secondary" id="btn-telemetry-modal" title="View Token Telemetry & Timescale Analytics">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-          Telemetry
         </button>
         <button class="btn btn-secondary" id="btn-simulate-modal">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
@@ -161,6 +162,7 @@
       <section class="console-panel" id="console-panel">
         <projects-view id="global-projects-view" class="hidden"></projects-view>
         <cron-view id="global-cron-view" class="hidden"></cron-view>
+        <telemetry-view id="global-telemetry-view" class="hidden"></telemetry-view>
         <agent-summary-overview id="global-dashboard" class="hidden"></agent-summary-overview>
 
         <div class="console-empty" id="console-empty">
@@ -827,89 +829,6 @@
           <button class="btn btn-primary" id="btn-save-settings">Save Settings</button>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- Modal: Token Telemetry & Timescales -->
-  <div class="modal-overlay hidden" id="modal-telemetry">
-    <div class="modal-card modal-lg" style="max-width: 840px;">
-      <div class="modal-header">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.2rem;">📊</span>
-          <h3 style="margin: 0; font-size: 1.1rem; font-weight: 600;">Token Telemetry & Timescale Analytics</h3>
-        </div>
-        <button class="btn-icon" id="btn-close-telemetry">&times;</button>
-      </div>
-      <div class="modal-body" style="padding: 20px;">
-        <!-- Timescale Filter Tabs -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-          <div class="telemetry-tabs" style="display: flex; gap: 6px; background: var(--bg-card); padding: 4px; border-radius: 8px; border: 1px solid var(--border-color);">
-            <button class="tab-btn" data-timescale="1h">Last 1 Hour</button>
-            <button class="tab-btn active" data-timescale="24h">Last 24 Hours</button>
-            <button class="tab-btn" data-timescale="7d">Last 7 Days</button>
-            <button class="tab-btn" data-timescale="30d">Last 30 Days</button>
-            <button class="tab-btn" data-timescale="all">All Time</button>
-          </div>
-          <button class="btn btn-secondary" id="btn-refresh-telemetry" style="font-size: 0.8rem; padding: 5px 10px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-            Refresh
-          </button>
-        </div>
-
-        <!-- Metrics Cards Grid -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px;">
-          <div class="telemetry-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-            <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Window Tokens</div>
-            <div id="telemetry-window-tokens" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-cyan); margin-top: 4px;">0</div>
-            <div id="telemetry-window-label" style="font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;">Last 24h consumption</div>
-          </div>
-          <div class="telemetry-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-            <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">All-Time Tokens</div>
-            <div id="telemetry-all-tokens" style="font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">0</div>
-            <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;">Cumulative total</div>
-          </div>
-          <div class="telemetry-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-            <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Cache Read Savings</div>
-            <div id="telemetry-cache-tokens" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-green); margin-top: 4px;">0</div>
-            <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;">Server-side prompt cache</div>
-          </div>
-          <div class="telemetry-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px;">
-            <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Sessions Tracked</div>
-            <div id="telemetry-sessions-count" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-purple); margin-top: 4px;">0</div>
-            <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 2px;">Historical runs recorded</div>
-          </div>
-        </div>
-
-        <!-- Timescale Trend Chart -->
-        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px; margin-bottom: 20px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary);" id="telemetry-trend-title">24-Hour Hourly Consumption Trend</div>
-            <div style="font-size: 0.72rem; color: var(--text-muted);">UTC timeline</div>
-          </div>
-          <div id="telemetry-bars-container" style="display: flex; align-items: flex-end; gap: 4px; height: 110px; padding-top: 8px; border-bottom: 1px solid var(--border-color); overflow-x: auto;">
-            <!-- Rendered via JS -->
-          </div>
-        </div>
-
-        <!-- Distributions: Model & Repo Breakdown -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px;">
-            <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 12px; color: var(--text-primary);">Usage by Model</div>
-            <div id="telemetry-model-list" style="display: flex; flex-direction: column; gap: 8px;">
-              <!-- Rendered via JS -->
-            </div>
-          </div>
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px; padding: 16px;">
-            <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 12px; color: var(--text-primary);">Usage by Repository</div>
-            <div id="telemetry-repo-list" style="display: flex; flex-direction: column; gap: 8px;">
-              <!-- Rendered via JS -->
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <script src="/static/vendor/marked.min.js"></script>
   <script src="/static/vendor/purify.min.js"></script>
   <script src="/static/markdown-renderer.js"></script>
@@ -924,10 +843,10 @@
   <script src="/static/components/project-new-modal.js?v=20261004g"></script>
   <script src="/static/components/projects-view.js?v=20261004g"></script>
   <script src="/static/components/cron-view.js?v=20261004g"></script>
+  <script src="/static/components/telemetry-view.js?v=20261004h"></script>
   <script src="/static/utils/api-client.js?v=20261004g"></script>
   <script src="/static/utils/github-links.js?v=20261004g"></script>
   <script src="/static/modules/formatters.js?v=20261004g"></script>
-  <script src="/static/modules/telemetry.js?v=20261004g"></script>
   <script src="/static/modules/overview.js?v=20261004g"></script>
   <script src="/static/modules/transcript.js?v=20261004g"></script>
   <script src="/static/modules/sessions.js?v=20261004g"></script>
@@ -940,3 +859,4 @@
   <div class="toast-stack" id="toast-stack"></div>
 </body>
 </html>
+
