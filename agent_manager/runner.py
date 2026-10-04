@@ -16,7 +16,7 @@ from agent_manager.config import (
 )
 from agent_manager.models import (
     AgentSessionInfo, AgentStatus, ConversationMessage,
-    MessageRole, SpawnRequest
+    MessageRole, SpawnRequest, WorkflowStage
 )
 from agent_manager.storage import save_sessions, load_sessions
 from agent_manager.github import post_issue_comment
@@ -196,6 +196,7 @@ class AgentRunnerManager:
         if issue_number:
             worktree_path, branch_name = self._setup_worktree(repo, issue_number)
 
+        pipeline_enabled = req.workflow_pipeline_enabled if req.workflow_pipeline_enabled is not None else getattr(config, "WORKFLOW_PIPELINE_ENABLED", False)
         title = req.title or (f"Issue #{issue_number}" if issue_number else "Ad-hoc Agent Task")
         session = AgentSessionInfo(
             session_id=session_id,
@@ -207,6 +208,8 @@ class AgentRunnerManager:
             git_branch=branch_name or req.worktree_branch or "main",
             model=req.model or getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash"),
             effort=req.effort or getattr(config, "DEFAULT_EFFORT", "high"),
+            workflow_pipeline_enabled=pipeline_enabled,
+            workflow_stage=WorkflowStage.SUMMARIZING if pipeline_enabled else WorkflowStage.DIRECT
         )
         self.sessions[session_id] = session
         self._context_queues[session_id] = asyncio.Queue()
@@ -591,6 +594,175 @@ class AgentRunnerManager:
         await self.broadcast("message_added", {"session_id": session_id, "message": msg.model_dump()})
         return msg
 
+    async def _run_cli_turn(self, session_id: str, prompt: str, cwd_dir: str, model: str, effort: str) -> str:
+        """Runs a single prompt turn via Antigravity CLI and returns the generated text response."""
+        from agent_manager.config import AGY_CLI_PATH, resolve_model_and_effort
+        clean_model, clean_effort, cli_model_args = resolve_model_and_effort(model, effort)
+        cmd_args = [
+            str(AGY_CLI_PATH),
+            *cli_model_args,
+            "--dangerously-skip-permissions",
+            "--output-format", "stream-json",
+            "-p", prompt
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd_args,
+            cwd=str(cwd_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        self._active_agents[session_id] = proc
+        accumulated_text = []
+
+        while True:
+            line_bytes = await proc.stdout.readline()
+            if not line_bytes:
+                break
+            line_str = line_bytes.decode('utf-8', errors='replace').strip()
+            if not line_str:
+                continue
+            try:
+                event_obj = json.loads(line_str)
+                ev = event_obj.get("event")
+                if ev == "step_update":
+                    step = event_obj.get("step_update", {})
+                    stype = step.get("step_type")
+                    if stype == "agent_response":
+                        delta = step.get("text_delta")
+                        if delta:
+                            accumulated_text.append(delta)
+                            await self._broadcast_token(session_id, delta)
+                elif ev == "result":
+                    res_info = event_obj.get("result", {})
+                    final_txt = res_info.get("response")
+                    if final_txt:
+                        accumulated_text = [final_txt]
+            except Exception:
+                pass
+
+        await proc.wait()
+        self._active_agents.pop(session_id, None)
+        return "".join(accumulated_text).strip()
+
+    async def _run_workflow_pipeline(self, session_id: str, task_description: str, cwd_dir: str, issue_num: int, branch_name: str):
+        """
+        Executes Issue #36 multi-stage workflow pipeline:
+        Stage 1: Dumb model summarizes issue requirements.
+        Stage 2: Smart model creates an architectural plan.
+        Stage 3: Dumb model executes implementation and verification.
+        """
+        session = self.sessions[session_id]
+        from agent_manager.config import (
+            PIPELINE_SUMMARY_MODEL, PIPELINE_SUMMARY_EFFORT,
+            PIPELINE_PLANNING_MODEL, PIPELINE_PLANNING_EFFORT,
+            PIPELINE_IMPLEMENTATION_MODEL, PIPELINE_IMPLEMENTATION_EFFORT
+        )
+
+        sum_model = getattr(config, "PIPELINE_SUMMARY_MODEL", PIPELINE_SUMMARY_MODEL)
+        sum_effort = getattr(config, "PIPELINE_SUMMARY_EFFORT", PIPELINE_SUMMARY_EFFORT)
+        plan_model = getattr(config, "PIPELINE_PLANNING_MODEL", PIPELINE_PLANNING_MODEL)
+        plan_effort = getattr(config, "PIPELINE_PLANNING_EFFORT", PIPELINE_PLANNING_EFFORT)
+        impl_model = getattr(config, "PIPELINE_IMPLEMENTATION_MODEL", PIPELINE_IMPLEMENTATION_MODEL)
+        impl_effort = getattr(config, "PIPELINE_IMPLEMENTATION_EFFORT", PIPELINE_IMPLEMENTATION_EFFORT)
+
+        # STAGE 1: ISSUE SUMMARY (Dumb Model)
+        session.workflow_stage = WorkflowStage.SUMMARIZING
+        session.model = sum_model
+        session.effort = sum_effort
+        session.current_activity = f"Stage 1/3: Summarizing requirements ({sum_model} / {sum_effort})..."
+        await self._append_message(
+            session_id,
+            MessageRole.SYSTEM,
+            f"🔄 **Pipeline Stage 1/3: Issue Summarization**\n"
+            f"Using model: `{sum_model}` (effort: `{sum_effort}`)\n"
+            f"Extracting core objectives, acceptance criteria, and constraints from Issue #{issue_num}..."
+        )
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+
+        summary_prompt = (
+            f"You are a requirements analyst. Read the following GitHub issue task description:\n\n"
+            f"{task_description}\n\n"
+            f"Provide a clear, structured summary:\n"
+            f"1. Core Objective\n"
+            f"2. Acceptance Criteria & Requirements\n"
+            f"3. Key Constraints & Context\n"
+            f"Keep the summary concise and focused."
+        )
+        summary_result = await self._run_cli_turn(session_id, summary_prompt, cwd_dir, sum_model, sum_effort)
+        session.pipeline_summary = summary_result or "Summary completed."
+        await self._append_message(
+            session_id,
+            MessageRole.AGENT,
+            f"📋 **Stage 1 Summary Deliverable**:\n\n{session.pipeline_summary}"
+        )
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+
+        # STAGE 2: ARCHITECTURAL PLANNING (Smart Model)
+        session.workflow_stage = WorkflowStage.PLANNING
+        session.model = plan_model
+        session.effort = plan_effort
+        session.current_activity = f"Stage 2/3: Formulating plan ({plan_model} / {plan_effort})..."
+        await self._append_message(
+            session_id,
+            MessageRole.SYSTEM,
+            f"🧠 **Pipeline Stage 2/3: High-Reasoning Planning**\n"
+            f"Using smart model: `{plan_model}` (effort: `{plan_effort}`)\n"
+            f"Formulating architectural execution plan based on Stage 1 summary..."
+        )
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+
+        planning_prompt = (
+            f"You are a principal software architect. You are planning the implementation for GitHub Issue #{issue_num} in {cwd_dir}.\n\n"
+            f"### Issue Requirements Summary:\n{session.pipeline_summary}\n\n"
+            f"### Original Task Description:\n{task_description}\n\n"
+            f"Create a step-by-step implementation plan including:\n"
+            f"1. Architecture & Design Blueprint\n"
+            f"2. Exact Files to Modify / Create\n"
+            f"3. Implementation Steps (ordered)\n"
+            f"4. Verification & Testing Strategy (with command log suppression)\n"
+            f"Make the instructions unambiguous for the implementation model."
+        )
+        plan_result = await self._run_cli_turn(session_id, planning_prompt, cwd_dir, plan_model, plan_effort)
+        session.pipeline_plan = plan_result or "Plan formulated."
+        await self._append_message(
+            session_id,
+            MessageRole.AGENT,
+            f"📐 **Stage 2 Plan Deliverable**:\n\n{session.pipeline_plan}"
+        )
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+
+        # STAGE 3: IMPLEMENTATION (Dumb Model)
+        session.workflow_stage = WorkflowStage.IMPLEMENTING
+        session.model = impl_model
+        session.effort = impl_effort
+        session.current_activity = f"Stage 3/3: Implementing code ({impl_model} / {impl_effort})..."
+        await self._append_message(
+            session_id,
+            MessageRole.SYSTEM,
+            f"⚡ **Pipeline Stage 3/3: Execution & Implementation**\n"
+            f"Using implementation model: `{impl_model}` (effort: `{impl_effort}`)\n"
+            f"Executing changes in isolated worktree `{cwd_dir}` according to the plan..."
+        )
+        self._save()
+        await self.broadcast("session_updated", session.model_dump())
+
+        implementation_prompt = (
+            f"You are operating autonomously on GitHub Issue #{issue_num}.\n"
+            f"Working Directory: {cwd_dir}\n"
+            f"Git Branch: {branch_name}\n\n"
+            f"### Approved Implementation Plan:\n{session.pipeline_plan}\n\n"
+            f"### Issue Context & Summary:\n{session.pipeline_summary}\n\n"
+            f"Execute the steps in the plan now. Modify the required files, run unit tests to verify, and summarize your completed work.\n"
+            f"Follow AGENTS.md conventions."
+        )
+
+        # Execute final implementation via standard runner loop
+        await self._run_agent_loop(session_id, implementation_prompt, cwd_dir, is_continuation=True)
+
     async def _broadcast_token(self, session_id: str, token: str):
         session = self.sessions[session_id]
         session.token_count += 1
@@ -606,6 +778,11 @@ class AgentRunnerManager:
             branch_name = session.git_branch or f"feat/issue-{issue_num}"
 
             from agent_manager.config import AGY_CLI_PATH, AGY_MODE, MAX_SESSION_TOKENS, resolve_model_and_effort
+
+            # Multi-stage workflow pipeline check (Issue #36)
+            if session.workflow_pipeline_enabled and not is_continuation:
+                await self._run_workflow_pipeline(session_id, initial_prompt, cwd_dir, issue_num, branch_name)
+                return
 
             # Resolve model and effort cleanly for CLI execution
             selected_model = session.model or getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash")

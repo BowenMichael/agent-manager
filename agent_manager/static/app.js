@@ -452,8 +452,17 @@ function updateActiveSessionView(session) {
 
   const currentModelTag = document.getElementById('current-model-tag');
   const currentEffortTag = document.getElementById('current-effort-tag');
+  const currentPipelineTag = document.getElementById('current-pipeline-tag');
   if (currentModelTag) currentModelTag.textContent = session.model || 'gemini-3.8-flash';
   if (currentEffortTag) currentEffortTag.textContent = `effort: ${session.effort || 'high'}`;
+  if (currentPipelineTag) {
+    if (session.workflow_pipeline_enabled) {
+      currentPipelineTag.textContent = `PIPELINE: ${session.workflow_stage || 'ACTIVE'}`;
+      currentPipelineTag.classList.remove('hidden');
+    } else {
+      currentPipelineTag.textContent = 'MODE: DIRECT';
+    }
+  }
 
   btnStopCurrent.disabled = (session.status === 'STOPPED' || session.status === 'COMPLETED' || session.status === 'FAILED' || session.is_archived);
   updateOverviewPanel(session);
@@ -869,6 +878,29 @@ async function loadSettings() {
       checkAutoCompact.checked = data.compact_completed_chat;
     }
 
+    const checkWorkflowPipeline = document.getElementById('check-workflow-pipeline');
+    if (checkWorkflowPipeline && typeof data.workflow_pipeline_enabled === 'boolean') {
+      checkWorkflowPipeline.checked = data.workflow_pipeline_enabled;
+    }
+
+    const selSumModel = document.getElementById('select-pipeline-sum-model');
+    if (selSumModel && data.pipeline_summary_model) selSumModel.value = data.pipeline_summary_model;
+
+    const selSumEffort = document.getElementById('select-pipeline-sum-effort');
+    if (selSumEffort && data.pipeline_summary_effort) selSumEffort.value = data.pipeline_summary_effort;
+
+    const selPlanModel = document.getElementById('select-pipeline-plan-model');
+    if (selPlanModel && data.pipeline_planning_model) selPlanModel.value = data.pipeline_planning_model;
+
+    const selPlanEffort = document.getElementById('select-pipeline-plan-effort');
+    if (selPlanEffort && data.pipeline_planning_effort) selPlanEffort.value = data.pipeline_planning_effort;
+
+    const selImplModel = document.getElementById('select-pipeline-impl-model');
+    if (selImplModel && data.pipeline_implementation_model) selImplModel.value = data.pipeline_implementation_model;
+
+    const selImplEffort = document.getElementById('select-pipeline-impl-effort');
+    if (selImplEffort && data.pipeline_implementation_effort) selImplEffort.value = data.pipeline_implementation_effort;
+
     // Mode
     if (data.agy_mode === 'terminal') {
       const modeTerm = document.getElementById('mode-terminal');
@@ -954,6 +986,13 @@ btnSaveSettings.addEventListener('click', async () => {
   const allowOverage = document.getElementById('check-allow-overage')?.checked ?? true;
   const maxTokens = parseInt(document.getElementById('input-max-tokens')?.value || '150000', 10);
   const autoCompact = document.getElementById('check-auto-compact')?.checked ?? true;
+  const workflowPipeline = document.getElementById('check-workflow-pipeline')?.checked ?? false;
+  const sumModel = document.getElementById('select-pipeline-sum-model')?.value || 'gemini-3.8-flash';
+  const sumEffort = document.getElementById('select-pipeline-sum-effort')?.value || 'low';
+  const planModel = document.getElementById('select-pipeline-plan-model')?.value || 'gemini-3.1-pro';
+  const planEffort = document.getElementById('select-pipeline-plan-effort')?.value || 'high';
+  const implModel = document.getElementById('select-pipeline-impl-model')?.value || 'gemini-3.8-flash';
+  const implEffort = document.getElementById('select-pipeline-impl-effort')?.value || 'low';
   const repoVal = document.getElementById('setting-default-repo')?.value?.trim();
   const key = inputGeminiKey?.value.trim();
 
@@ -967,7 +1006,14 @@ btnSaveSettings.addEventListener('click', async () => {
       effort_level: selectedEffort,
       allow_overage_credits: allowOverage,
       max_session_tokens: maxTokens,
-      compact_completed_chat: autoCompact
+      compact_completed_chat: autoCompact,
+      workflow_pipeline_enabled: workflowPipeline,
+      pipeline_summary_model: sumModel,
+      pipeline_summary_effort: sumEffort,
+      pipeline_planning_model: planModel,
+      pipeline_planning_effort: planEffort,
+      pipeline_implementation_model: implModel,
+      pipeline_implementation_effort: implEffort
     };
     if (repoVal) {
       payload.default_repo = repoVal;
