@@ -308,10 +308,10 @@ class ProjectBacklogDispatcher:
             self.dispatch_history.append({"timestamp": self.last_run_at, **err_result})
             return err_result
 
-    async def start(self, initial_delay_seconds: int = 1440, interval_seconds: int = 600):
+    async def start(self, initial_delay_seconds: int = 600, interval_seconds: int = 600):
         """
         Starts the recurring cron loop:
-        1. Waits initial_delay_seconds (default: ~24 minutes, completing 32 mins from user prompt)
+        1. Waits initial_delay_seconds (default: 10 minutes)
         2. Executes check_and_dispatch()
         3. Sleeps interval_seconds (default: 10 minutes) and repeats
         """

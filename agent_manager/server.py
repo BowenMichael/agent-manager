@@ -39,8 +39,8 @@ async def lifespan(app: FastAPI):
     # Startup: Start local Git board watcher
     watcher.start()
     asyncio.create_task(runner.start_watchdog())
-    # Startup: Start autonomous backlog cron dispatcher (starts in ~23 mins, then every 10 mins)
-    asyncio.create_task(dispatcher.start(initial_delay_seconds=1374, interval_seconds=600))
+    # Startup: Start autonomous backlog cron dispatcher (runs every 10 mins)
+    asyncio.create_task(dispatcher.start(initial_delay_seconds=600, interval_seconds=600))
     yield
     # Shutdown: Stop watcher and cron dispatcher
     watcher.stop()
