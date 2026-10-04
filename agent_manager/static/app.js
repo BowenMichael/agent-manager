@@ -232,6 +232,7 @@ function handleWsMessage(msg) {
         if (message.role === 'TOOL_CALL') targetSession.turn_count++;
       }
       if (activeSessionId === session_id) {
+        finalizeThoughtBubble();
         currentStreamingBubble = null;
         renderMessageItem(message);
         scrollToBottom();
@@ -244,6 +245,14 @@ function handleWsMessage(msg) {
 
     case 'settings_updated':
       if (typeof loadSettings === 'function') loadSettings();
+      break;
+
+    case 'thought_delta':
+      const { session_id: thoughtSid, delta: thoughtDelta, model: thoughtModel } = msg.data;
+      if (activeSessionId === thoughtSid) {
+        handleThoughtStream(thoughtDelta, thoughtModel);
+        scrollToBottom();
+      }
       break;
 
     case 'token_stream':
@@ -260,7 +269,60 @@ function handleWsMessage(msg) {
   }
 }
 
+let currentThoughtBubble = null;
+let thoughtStartTime = null;
+let thoughtTimerInterval = null;
+
+function handleThoughtStream(delta, model = 'Gemini 3.1 Pro') {
+  if (!currentThoughtBubble) {
+    thoughtStartTime = Date.now();
+    currentThoughtBubble = document.createElement('div');
+    currentThoughtBubble.className = 'msg-bubble msg-thought-live';
+    currentThoughtBubble.innerHTML = `
+      <div class="thought-header">
+        <span class="thought-icon pulse-glow">🧠</span>
+        <span class="thought-label">${escapeHtml(model).toUpperCase()} (LIVE REASONING)</span>
+        <span class="thought-timer" id="live-thought-timer">Thinking: 1s</span>
+      </div>
+      <div class="thought-body live-thought-text"></div>
+    `;
+    transcriptStream.appendChild(currentThoughtBubble);
+
+    if (thoughtTimerInterval) clearInterval(thoughtTimerInterval);
+    thoughtTimerInterval = setInterval(() => {
+      const timerEl = currentThoughtBubble ? currentThoughtBubble.querySelector('#live-thought-timer') : null;
+      if (timerEl && thoughtStartTime) {
+        const secs = Math.max(1, Math.floor((Date.now() - thoughtStartTime) / 1000));
+        timerEl.textContent = `Thinking: ${secs}s`;
+      }
+    }, 1000);
+  }
+
+  const textEl = currentThoughtBubble.querySelector('.live-thought-text');
+  if (textEl) {
+    textEl.textContent += delta;
+  }
+}
+
+function finalizeThoughtBubble() {
+  if (thoughtTimerInterval) {
+    clearInterval(thoughtTimerInterval);
+    thoughtTimerInterval = null;
+  }
+  if (currentThoughtBubble) {
+    const timer = currentThoughtBubble.querySelector('.thought-timer');
+    if (timer && thoughtStartTime) {
+      const elapsed = Math.max(1, Math.round((Date.now() - thoughtStartTime) / 1000));
+      timer.textContent = `Completed in ${elapsed}s`;
+    }
+    currentThoughtBubble.classList.remove('msg-thought-live');
+    currentThoughtBubble.classList.add('msg-thought');
+    currentThoughtBubble = null;
+  }
+}
+
 function handleTokenStream(token) {
+  finalizeThoughtBubble();
   if (!currentStreamingBubble) {
     currentStreamingBubble = document.createElement('div');
     currentStreamingBubble.className = 'msg-bubble msg-agent';
@@ -348,6 +410,12 @@ function renderSessionsList() {
 
       </div>
       <div class="card-title">${escapeHtml(session.title)}</div>
+      ${session.status === 'RUNNING' ? `
+        <div class="card-live-activity" title="${escapeHtml(session.current_activity || 'Reasoning & executing...')}">
+          <span class="pulse-indicator-purple"></span>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(session.current_activity || 'Reasoning & executing...')}</span>
+        </div>
+      ` : ''}
       <div class="card-bottom">
         <span>${session.issue_number ? '#' + session.issue_number : 'ad-hoc'}</span>
         <span>${session.turn_count || 0} turns • ${session.token_count || 0} tok</span>
@@ -405,7 +473,7 @@ function updateActiveSessionView(session) {
     } else if (session.status === 'RUNNING') {
       agentActivityBar.classList.remove('stalled');
       activitySpinner.style.display = 'inline-block';
-      activityText.textContent = session.current_activity || '🧠 Agent thinking & executing...';
+      activityText.innerHTML = `<span class="pulse-indicator-purple" style="margin-right: 6px;"></span><strong>${escapeHtml(session.model || 'Agent')}:</strong> ${escapeHtml(session.current_activity || 'Reasoning & executing...')}`;
       if (btnInterrupt) btnInterrupt.classList.add('hidden');
     } else if (session.status === 'IN_REVIEW') {
       agentActivityBar.classList.remove('stalled');
@@ -1492,4 +1560,202 @@ if (btnCompactCurrent) {
     }
   });
 }
+
+// ==========================================
+// Token Telemetry & Timescales Modal
+// ==========================================
+let currentTelemetryData = null;
+let activeTimescale = '24h';
+
+const modalTelemetry = document.getElementById('modal-telemetry');
+const btnTelemetryModal = document.getElementById('btn-telemetry-modal');
+const btnCloseTelemetry = document.getElementById('btn-close-telemetry');
+const btnRefreshTelemetry = document.getElementById('btn-refresh-telemetry');
+const statPillTokens = document.getElementById('stat-pill-tokens');
+
+async function fetchAndRenderTelemetry(timescale = activeTimescale) {
+  try {
+    const res = await fetch('/api/telemetry/tokens');
+    if (!res.ok) throw new Error('Failed to fetch telemetry');
+    currentTelemetryData = await res.json();
+    renderTelemetryView(currentTelemetryData, timescale);
+  } catch (err) {
+    console.error('Error fetching telemetry:', err);
+  }
+}
+
+function renderTelemetryView(data, timescale) {
+  if (!data || !data.summary) return;
+  activeTimescale = timescale;
+
+  const s = data.summary;
+  let windowTokens = s.last_24h_tokens || 0;
+  let windowLabel = 'Tokens consumed in last 24h';
+
+  if (timescale === '1h') {
+    windowTokens = s.last_1h_tokens || 0;
+    windowLabel = 'Tokens consumed in last 1 hour';
+  } else if (timescale === '7d') {
+    windowTokens = s.last_7d_tokens || 0;
+    windowLabel = 'Tokens consumed in last 7 days';
+  } else if (timescale === '30d') {
+    windowTokens = s.last_30d_tokens || 0;
+    windowLabel = 'Tokens consumed in last 30 days';
+  } else if (timescale === 'all') {
+    windowTokens = s.all_time_tokens || 0;
+    windowLabel = 'All-time cumulative tokens';
+  }
+
+  // Update Metric Cards
+  const elWindowTokens = document.getElementById('telemetry-window-tokens');
+  const elWindowLabel = document.getElementById('telemetry-window-label');
+  const elAllTokens = document.getElementById('telemetry-all-tokens');
+  const elCacheTokens = document.getElementById('telemetry-cache-tokens');
+  const elSessionsCount = document.getElementById('telemetry-sessions-count');
+
+  if (elWindowTokens) elWindowTokens.textContent = windowTokens.toLocaleString();
+  if (elWindowLabel) elWindowLabel.textContent = windowLabel;
+  if (elAllTokens) elAllTokens.textContent = (s.all_time_tokens || 0).toLocaleString();
+  if (elCacheTokens) elCacheTokens.textContent = (s.all_time_cache_read_tokens || 0).toLocaleString();
+  if (elSessionsCount) elSessionsCount.textContent = (s.total_sessions_tracked || 0).toLocaleString();
+
+  // Render Trend Bars
+  const barsContainer = document.getElementById('telemetry-bars-container');
+  const trendTitle = document.getElementById('telemetry-trend-title');
+
+  if (barsContainer) {
+    barsContainer.innerHTML = '';
+    let trendItems = [];
+
+    if (timescale === '1h' || timescale === '24h') {
+      if (trendTitle) trendTitle.textContent = '24-Hour Hourly Consumption Trend';
+      trendItems = (data.hourly_trend || []).map(item => ({
+        label: item.hour ? item.hour.split(' ')[1] : '',
+        fullLabel: item.hour,
+        tokens: item.tokens || 0
+      }));
+    } else {
+      if (trendTitle) trendTitle.textContent = `${timescale === '7d' ? '7-Day' : '30-Day'} Daily Consumption Trend`;
+      const days = timescale === '7d' ? 7 : 30;
+      trendItems = (data.daily_trend || []).slice(-days).map(item => ({
+        label: item.date ? item.date.slice(5) : '',
+        fullLabel: item.date,
+        tokens: item.tokens || 0
+      }));
+    }
+
+    const maxToks = Math.max(...trendItems.map(i => i.tokens), 100);
+
+    trendItems.forEach(item => {
+      const col = document.createElement('div');
+      col.className = 'telemetry-bar-col';
+      col.title = `${item.fullLabel}: ${item.tokens.toLocaleString()} tokens`;
+
+      const pct = Math.max(3, Math.round((item.tokens / maxToks) * 100));
+      col.innerHTML = `
+        <div class="telemetry-bar-fill" style="height: ${pct}%;"></div>
+        <div style="font-size: 0.65rem; color: var(--text-dim); margin-top: 4px; text-align: center; white-space: nowrap;">${item.label}</div>
+      `;
+      barsContainer.appendChild(col);
+    });
+  }
+
+  // Render Model Breakdown
+  const modelList = document.getElementById('telemetry-model-list');
+  if (modelList) {
+    modelList.innerHTML = '';
+    const models = data.model_breakdown || data.by_model || [];
+    if (models.length === 0) {
+      modelList.innerHTML = '<div style="font-size: 0.78rem; color: var(--text-dim);">No model metrics recorded yet.</div>';
+    } else {
+      models.forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'breakdown-row';
+        row.innerHTML = `
+          <div class="breakdown-header">
+            <span style="font-weight: 500; color: var(--text-primary);">${escapeHtml(m.model)}</span>
+            <span style="color: var(--text-secondary);">${(m.tokens || 0).toLocaleString()} (${m.percentage}%)</span>
+          </div>
+          <div class="breakdown-track">
+            <div class="breakdown-fill" style="width: ${m.percentage}%;"></div>
+          </div>
+        `;
+        modelList.appendChild(row);
+      });
+    }
+  }
+
+  // Render Repo Breakdown
+  const repoList = document.getElementById('telemetry-repo-list');
+  if (repoList) {
+    repoList.innerHTML = '';
+    const repos = data.repo_breakdown || data.by_repo || [];
+    if (repos.length === 0) {
+      repoList.innerHTML = '<div style="font-size: 0.78rem; color: var(--text-dim);">No repository metrics recorded yet.</div>';
+    } else {
+      repos.forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'breakdown-row';
+        row.innerHTML = `
+          <div class="breakdown-header">
+            <span style="font-weight: 500; color: var(--text-primary);">${escapeHtml(r.repo)}</span>
+            <span style="color: var(--text-secondary);">${(r.tokens || 0).toLocaleString()} (${r.percentage}%)</span>
+          </div>
+          <div class="breakdown-track">
+            <div class="breakdown-fill" style="width: ${r.percentage}%; background: var(--accent-purple);"></div>
+          </div>
+        `;
+        repoList.appendChild(row);
+      });
+    }
+  }
+}
+
+// Open Telemetry Modal Handlers
+if (btnTelemetryModal) {
+  btnTelemetryModal.addEventListener('click', () => {
+    if (modalTelemetry) modalTelemetry.classList.remove('hidden');
+    fetchAndRenderTelemetry(activeTimescale);
+  });
+}
+
+if (statPillTokens) {
+  statPillTokens.addEventListener('click', () => {
+    if (modalTelemetry) modalTelemetry.classList.remove('hidden');
+    fetchAndRenderTelemetry(activeTimescale);
+  });
+}
+
+if (btnCloseTelemetry) {
+  btnCloseTelemetry.addEventListener('click', () => {
+    if (modalTelemetry) modalTelemetry.classList.add('hidden');
+  });
+}
+
+if (btnRefreshTelemetry) {
+  btnRefreshTelemetry.addEventListener('click', () => {
+    fetchAndRenderTelemetry(activeTimescale);
+  });
+}
+
+if (modalTelemetry) {
+  modalTelemetry.addEventListener('click', (e) => {
+    if (e.target === modalTelemetry) modalTelemetry.classList.add('hidden');
+  });
+}
+
+// Timescale Tab Switching
+document.querySelectorAll('.telemetry-tabs .tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.telemetry-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const ts = btn.getAttribute('data-timescale') || '24h';
+    if (currentTelemetryData) {
+      renderTelemetryView(currentTelemetryData, ts);
+    } else {
+      fetchAndRenderTelemetry(ts);
+    }
+  });
+});
+
 

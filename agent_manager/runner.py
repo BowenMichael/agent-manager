@@ -714,10 +714,18 @@ class AgentRunnerManager:
                         delta = step.get("text_delta")
                         if delta:
                             accumulated_thought.append(delta)
-                            await self.broadcast("thought_delta", {"session_id": session_id, "delta": delta})
-                            recent_thought = "".join(accumulated_thought).strip()[-80:].replace("\n", " ")
-                            session.current_activity = f"Planning ({clean_model}): {recent_thought}..."
-                            await self.broadcast("session_updated", session.model_dump())
+                            await self.broadcast("thought_delta", {
+                                "session_id": session_id,
+                                "delta": delta,
+                                "model": clean_model
+                            })
+                            from datetime import datetime
+                            session.last_activity_at = datetime.utcnow().isoformat()
+                            session.is_stalled = False
+                            if len(accumulated_thought) % 12 == 1:
+                                recent_thought = "".join(accumulated_thought).strip()[-80:].replace("\n", " ")
+                                session.current_activity = f"Planning ({clean_model}): {recent_thought}..."
+                                await self.broadcast("session_updated", session.model_dump())
 
                     elif stype == "agent_response":
                         delta = step.get("text_delta")
@@ -742,6 +750,21 @@ class AgentRunnerManager:
 
         await proc.wait()
         self._active_agents.pop(session_id, None)
+
+        try:
+            from agent_manager.telemetry import record_token_usage
+            record_token_usage(
+                session_id=session_id,
+                repo=session.repo or "",
+                model=clean_model,
+                input_tokens=session.input_tokens,
+                output_tokens=session.output_tokens,
+                thinking_tokens=session.thinking_tokens,
+                cache_read_tokens=session.cache_read_tokens,
+                total_tokens=session.total_tokens
+            )
+        except Exception as tel_err:
+            logger.debug(f"Telemetry record error in cli turn: {tel_err}")
 
         if accumulated_thought:
             full_thought = "".join(accumulated_thought).strip()
@@ -910,32 +933,8 @@ class AgentRunnerManager:
             current_mode = getattr(config, "AGY_MODE", AGY_MODE)
             current_max_tokens = getattr(config, "MAX_SESSION_TOKENS", MAX_SESSION_TOKENS)
 
-            agy_prompt = (
-                f"You are operating autonomously on GitHub Issue #{issue_num}.\n"
-                f"Working Directory: {cwd_dir}\n"
-                f"Git Branch: {branch_name}\n\n"
-                f"Task Description:\n{initial_prompt}\n\n"
-                f"RULES & EFFICIENCY GUARDRAILS:\n"
-                f"1. Make changes in this directory.\n"
-                f"2. Follow AGENTS.md conventions.\n"
-                f"3. CRITICAL TOOL EFFICIENCY (Prevent Runaway Token Spend):\n"
-                f"   - SEARCH FIRST: Always use grep_search to find exact symbol, function, or line locations BEFORE calling view_file.\n"
-                f"   - SLICE READING ONLY: When calling view_file, ALWAYS supply StartLine and EndLine (max 100 lines at once). NEVER view entire large files over 200 lines.\n"
-                f"   - NEVER RE-READ: Do NOT call view_file on the same file or line range twice in a row. Rely on context and proceed directly to code edits or tests.\n"
-                f"4. ANTI-MONOLITH RULE: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files (models, services, utils, components). When modifying large files (>300 lines), extract new functions into separate helper files.\n"
-                f"5. CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
-                f"6. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
-                f"7. Once changes are ready, commit and create a pull request if appropriate.\n"
-            )
-
             # Option 1: Terminal Mode
             if current_mode == "terminal":
-                escaped_prompt = agy_prompt.replace('"', '`"')
-                cmd = f'& "{AGY_CLI_PATH}" {" ".join(cli_model_args)} --dangerously-skip-permissions -i "{escaped_prompt}"'
-                session.terminal_command = cmd
-                title_str = f"Antigravity CLI (agy) - Issue #{issue_num} [{clean_model} / {clean_effort}]"
-                ps_cmd = f'powershell -NoExit -Command "$host.ui.RawUI.WindowTitle = \"{title_str}\"; {cmd}"'
-
                 existing_proc = self._active_agents.get(session_id)
                 is_proc_alive = False
                 if existing_proc is not None:
@@ -958,6 +957,46 @@ class AgentRunnerManager:
                     await self.broadcast("session_updated", session.model_dump())
                     return
 
+            repo_context = get_repository_context(cwd_dir)
+            agy_prompt = (
+                f"You are operating autonomously on GitHub Issue #{issue_num}.\n"
+                f"Working Directory: {cwd_dir}\n"
+                f"Git Branch: {branch_name}\n\n"
+                f"Task Description:\n{initial_prompt}\n\n"
+                f"Codebase Context (Repository Structure & Configurations):\n{repo_context}\n\n"
+                f"RULES & EFFICIENCY GUARDRAILS:\n"
+                f"1. Make changes in this directory.\n"
+                f"2. Follow AGENTS.md conventions.\n"
+                f"3. CRITICAL TOOL EFFICIENCY (Prevent Runaway Token Spend):\n"
+                f"   - SEARCH FIRST: Always use grep_search to find exact symbol, function, or line locations BEFORE calling view_file.\n"
+                f"   - SLICE READING ONLY: When calling view_file, ALWAYS supply StartLine and EndLine (max 100 lines at once). NEVER view entire large files over 200 lines.\n"
+                f"   - NEVER RE-READ: Do NOT call view_file on the same file or line range twice in a row. Rely on context and proceed directly to code edits or tests.\n"
+                f"4. ANTI-MONOLITH RULE: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files (models, services, utils, components). When modifying large files (>300 lines), extract new functions into separate helper files.\n"
+                f"5. CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
+                f"6. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
+                f"7. Once changes are ready, commit and create a pull request if appropriate.\n"
+            )
+
+            # Option 1: Terminal Mode Launch
+            if current_mode == "terminal":
+                title_str = f"Antigravity CLI (agy) - Issue #{issue_num} [{clean_model} / {clean_effort}]"
+                launcher_path = Path(cwd_dir) / ".agy_terminal_launch.ps1"
+                target_prompt = initial_prompt if is_continuation else agy_prompt
+                safe_prompt = target_prompt.replace('@"', '`@"').replace('"@', '`"@')
+                continue_flag = "--continue" if is_continuation else ""
+
+                script_lines = [
+                    "$OutputEncoding = [System.Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()",
+                    f"$host.ui.RawUI.WindowTitle = '{title_str}'",
+                    f"Write-Host '🚀 Launching Antigravity CLI for Issue #{issue_num} [{clean_model}]...' -ForegroundColor Cyan",
+                    "$promptText = @\"",
+                    safe_prompt,
+                    "\"@",
+                    f"& \"{AGY_CLI_PATH}\" {' '.join(cli_model_args)} {continue_flag} --dangerously-skip-permissions -i $promptText"
+                ]
+                launcher_path.write_text("\n".join(script_lines), encoding="utf-8")
+                session.terminal_command = f'& "{AGY_CLI_PATH}" {" ".join(cli_model_args)} {continue_flag} --dangerously-skip-permissions -i "{target_prompt[:80]}..."'
+
                 await self._append_message(
                     session_id,
                     MessageRole.SYSTEM,
@@ -969,7 +1008,12 @@ class AgentRunnerManager:
                 self._save()
                 await self.broadcast("session_updated", session.model_dump())
 
-                proc = subprocess.Popen(f'start {ps_cmd}', cwd=str(cwd_dir), shell=True)
+                creation_flags = 0x00000010  # subprocess.CREATE_NEW_CONSOLE
+                proc = subprocess.Popen(
+                    ["powershell.exe", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", str(launcher_path)],
+                    cwd=str(cwd_dir),
+                    creationflags=creation_flags
+                )
                 self._active_agents[session_id] = proc
 
                 # Keep session alive and interactive in review mode
@@ -1298,8 +1342,24 @@ class AgentRunnerManager:
                     stderr_txt = ""
                 if proc.returncode != 0 and _looks_like_quota_error(stderr_txt):
                     await self._flag_quota_exceeded(session_id, stderr_txt)
-                elif proc.returncode != 0 and stderr_txt.strip():
+                if proc.returncode != 0 and stderr_txt.strip():
                     await self._append_message(session_id, MessageRole.SYSTEM, f"Agent CLI exited with code {proc.returncode}: {stderr_txt.strip()[-800:]}")
+                
+                try:
+                    from agent_manager.telemetry import record_token_usage
+                    record_token_usage(
+                        session_id=session_id,
+                        repo=session.repo or "",
+                        model=session.model or clean_model,
+                        input_tokens=session.input_tokens,
+                        output_tokens=session.output_tokens,
+                        thinking_tokens=session.thinking_tokens,
+                        cache_read_tokens=session.cache_read_tokens,
+                        total_tokens=session.total_tokens
+                    )
+                except Exception as tel_err:
+                    logger.debug(f"Telemetry record error in agent loop: {tel_err}")
+
                 if session.status not in [AgentStatus.PAUSED, AgentStatus.STOPPED, AgentStatus.COMPLETED]:
                     session.status = AgentStatus.IN_REVIEW if proc.returncode == 0 else AgentStatus.FAILED
                 
