@@ -1,9 +1,11 @@
+import asyncio
 import logging
 from typing import Dict, Any, List
 from agent_manager import config
 from agent_manager.models import SpawnRequest, AgentStatus
 from agent_manager.formatters.comments import is_agent_comment
 from agent_manager.poller.constants import STATUS_NAMES, is_empty_or_template_only
+from agent_manager.services.interpretation import run_interpretation_and_start
 
 logger = logging.getLogger("agent_manager.poller.sync")
 
@@ -89,11 +91,8 @@ async def handle_ready_status(watcher, active_session, item_id: str, issue_num: 
             if s.issue_number == issue_num and s.repo == repo and s.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING, AgentStatus.PAUSED]
         ]
         if not active_sessions and issue_key not in watcher.active_issues:
-            logger.info("Found new issue #%s in Ready for Agent. Moving status to In Progress on Project Board...", issue_num)
+            logger.info("Found new issue #%s in Ready for Agent. Preparing agent session and evaluating interpretation...", issue_num)
             watcher.active_issues.add(issue_key)
-
-            await watcher.update_item_status(item_id, "in_progress")
-            logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
 
             prompt_body = body
             if is_empty_or_template_only(body):
@@ -137,7 +136,18 @@ async def handle_ready_status(watcher, active_session, item_id: str, issue_num: 
                 title=title,
                 prompt=prompt
             )
-            session = await watcher.runner.spawn_agent(spawn_req)
+            session = await watcher.runner.spawn_agent(spawn_req, defer_start=True)
             session.seen_comment_ids = [c.get("id") for c in comments if c.get("id")]
             session.last_issue_body = body
             watcher.runner._save()
+
+            asyncio.create_task(
+                run_interpretation_and_start(
+                    watcher=watcher,
+                    item_id=item_id,
+                    issue_key=issue_key,
+                    spawn_req=spawn_req,
+                    session=session,
+                    raw_body=body
+                )
+            )

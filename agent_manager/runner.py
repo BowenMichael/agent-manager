@@ -92,8 +92,8 @@ class AgentRunnerManager:
     def _setup_worktree(self, repo: str, issue_number: int) -> tuple[Optional[str], Optional[str]]:
         return setup_worktree(repo, issue_number)
 
-    async def spawn_agent(self, req: SpawnRequest) -> AgentSessionInfo:
-        return await spawn_agent(self, req)
+    async def spawn_agent(self, req: SpawnRequest, defer_start: bool = False) -> AgentSessionInfo:
+        return await spawn_agent(self, req, defer_start=defer_start)
 
     async def restart_agent(self, session_id: str) -> Optional[AgentSessionInfo]:
         return await restart_agent(self, session_id)

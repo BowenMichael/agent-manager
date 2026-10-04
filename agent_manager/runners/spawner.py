@@ -9,7 +9,7 @@ from agent_manager.config import DEFAULT_REPO
 from agent_manager.runners.worktree_manager import setup_worktree
 
 
-async def spawn_agent(manager, req: SpawnRequest) -> AgentSessionInfo:
+async def spawn_agent(manager, req: SpawnRequest, defer_start: bool = False) -> AgentSessionInfo:
     repo = req.repo or DEFAULT_REPO
     issue_number = req.issue_number
 
@@ -54,8 +54,9 @@ async def spawn_agent(manager, req: SpawnRequest) -> AgentSessionInfo:
     manager._save()
     await manager.broadcast("session_created", session.model_dump())
 
-    task = asyncio.create_task(manager._run_agent_loop(session_id, req.prompt, worktree_path))
-    manager._tasks[session_id] = task
+    if not defer_start:
+        task = asyncio.create_task(manager._run_agent_loop(session_id, req.prompt, worktree_path))
+        manager._tasks[session_id] = task
     return session
 
 
