@@ -1,3 +1,4 @@
+import sys
 import subprocess
 from fastapi import APIRouter, HTTPException
 from agent_manager.models import (
@@ -56,6 +57,11 @@ async def spawn_agent(req: SpawnRequest):
 
 @router.post("/{session_id}/launch-terminal")
 async def launch_terminal(session_id: str):
+    if sys.platform != "win32":
+        raise HTTPException(
+            status_code=400,
+            detail="Desktop interactive terminal launch is only supported on Windows."
+        )
     session = runner.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Agent session not found")

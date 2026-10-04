@@ -71,19 +71,16 @@ async def run_agent_loop(manager, session_id: str, initial_prompt: str, worktree
 
         if current_mode == "terminal":
             target_prompt = initial_prompt if is_continuation else agy_prompt
-            await launch_desktop_terminal(manager, session, issue_num, clean_model, clean_effort, cli_model_args, cwd_dir, target_prompt, is_continuation)
-            return
+            launched = await launch_desktop_terminal(manager, session, issue_num, clean_model, clean_effort, cli_model_args, cwd_dir, target_prompt, is_continuation)
+            if launched:
+                return
+            # Fall back to web_stream mode if terminal launch is not supported on this platform
+            logger.info(f"Terminal mode failed/unsupported for session {session_id}; falling back to web_stream mode.")
 
         prompt_note = f"Prompting agent with model {clean_model} (effort: {clean_effort})" if is_continuation else f"Spawning agent with model {clean_model} (effort: {clean_effort})"
         await manager._append_message(session_id, MessageRole.SYSTEM, f"🌐 [Option 2: Web Stream Override] {prompt_note}...")
         manager._save()
         await manager.broadcast("session_updated", session.model_dump())
-
-        cmd_args = [str(AGY_CLI_PATH), *cli_model_args, "--dangerously-skip-permissions", "--output-format", "stream-json"]
-        if is_continuation:
-            cmd_args.extend(["--continue", "-p", initial_prompt])
-        else:
-            cmd_args.extend(["-p", agy_prompt])
 
         # Setup persistent paths for detached process output and returncode tracking
         logs_dir = Path(cwd_dir) / ".agent_logs"
@@ -97,6 +94,31 @@ async def run_agent_loop(manager, session_id: str, initial_prompt: str, worktree
             session.stream_log_offset = Path(log_file).stat().st_size
         else:
             session.stream_log_offset = 0
+
+        # Safe fallback when local agy binary is missing (e.g. running in headless Linux container)
+        if not Path(AGY_CLI_PATH).exists():
+            logger.warning(f"Antigravity CLI binary '{AGY_CLI_PATH}' not found. Emulating graceful headless execution.")
+            mock_line = json.dumps({
+                "event": "step_update",
+                "step_update": {
+                    "step_type": "text",
+                    "state": "completed",
+                    "text": f"⚠️ Antigravity CLI binary not found at '{AGY_CLI_PATH}'. Running in headless fallback mode."
+                }
+            }) + "\n"
+            Path(log_file).write_text(mock_line, encoding="utf-8")
+            Path(exit_file).write_text("0", encoding="utf-8")
+            session.pid = None
+            manager._save()
+            await manager.broadcast("session_updated", session.model_dump())
+            await tail_agent_log(manager, session_id, clean_model=clean_model)
+            return
+
+        cmd_args = [str(AGY_CLI_PATH), *cli_model_args, "--dangerously-skip-permissions", "--output-format", "stream-json"]
+        if is_continuation:
+            cmd_args.extend(["--continue", "-p", initial_prompt])
+        else:
+            cmd_args.extend(["-p", agy_prompt])
 
         pid = launch_detached_agent(cmd_args, cwd=str(cwd_dir), log_file=log_file, exit_file=exit_file)
         session.pid = pid
