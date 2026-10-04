@@ -38,11 +38,12 @@ async def handle_turn_completion(manager, session, final_resp: str):
             logger.error(f"Failed to post agent completion comment to GitHub: {post_err}")
 
 
-async def handle_post_process(manager, session, proc):
+async def handle_post_process(manager, session, proc=None, returncode: int = 0):
+    rc = returncode if proc is None else getattr(proc, 'returncode', 0)
     if session.status not in [AgentStatus.PAUSED, AgentStatus.STOPPED, AgentStatus.COMPLETED]:
-        session.status = AgentStatus.IN_REVIEW if proc.returncode == 0 else AgentStatus.FAILED
+        session.status = AgentStatus.IN_REVIEW if rc == 0 else AgentStatus.FAILED
 
-    if proc.returncode == 0 and session.status != AgentStatus.FAILED:
+    if rc == 0 and session.status != AgentStatus.FAILED:
         await manager.compact_session(session.session_id)
 
         if getattr(config, "AUTO_MERGE_ENABLED", False) and session.repo and session.git_branch:
