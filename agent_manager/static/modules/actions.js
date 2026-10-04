@@ -231,6 +231,12 @@ function initActionButtons() {
 
   const btnShowDashboard = document.getElementById('btn-show-dashboard');
   if (btnShowDashboard) btnShowDashboard.addEventListener('click', showDashboardView);
+
+  const btnShowProjects = document.getElementById('btn-show-projects');
+  if (btnShowProjects) btnShowProjects.addEventListener('click', showProjectsView);
+
+  const btnHeaderProjects = document.getElementById('btn-header-projects');
+  if (btnHeaderProjects) btnHeaderProjects.addEventListener('click', showProjectsView);
 }
 
 window.archiveAgent = archiveAgent;

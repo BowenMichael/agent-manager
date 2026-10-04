@@ -122,4 +122,20 @@ function initModals() {
   }
 }
 
+function openLaunchModalWithIssue(repo, issueNumber, title) {
+  const modalLaunch = document.getElementById('modal-launch');
+  if (!modalLaunch) return;
+  const launchRepo = document.getElementById('launch-repo');
+  const launchIssueNum = document.getElementById('launch-issue-num');
+  const launchPrompt = document.getElementById('launch-prompt');
+
+  if (launchRepo) launchRepo.value = repo || 'BowenMichael/fit-elo';
+  if (launchIssueNum) launchIssueNum.value = issueNumber || '';
+  if (launchPrompt) {
+    launchPrompt.value = `You have been assigned to GitHub Issue #${issueNumber} in ${repo}.\n\n**Title**: ${title}\n\nWork inside the designated branch and worktree, inspect code patterns, follow AGENTS.md, run tests, and open a PR when completed.`;
+  }
+  modalLaunch.classList.remove('hidden');
+}
+
 window.initModals = initModals;
+window.openLaunchModalWithIssue = openLaunchModalWithIssue;

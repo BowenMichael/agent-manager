@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/static/components/git-tree-viewer.css">
   <link rel="stylesheet" href="/static/components/issue-viewer.css">
   <link rel="stylesheet" href="/static/components/agent-summary-overview.css">
+  <link rel="stylesheet" href="/static/components/projects-view.css">
 </head>
 <body>
   <div class="app-layout">
@@ -49,7 +50,11 @@
       </div>
 
       <div class="header-actions">
-        <a href="https://github.com/users/BowenMichael/projects/1" target="_blank" class="btn btn-secondary link-pill" title="Open GitHub Project Board">
+        <button class="btn btn-secondary link-pill" id="btn-header-projects" title="View Project Portfolio & Multi-Project Tables">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          Projects View
+        </button>
+        <a href="https://github.com/users/BowenMichael/projects/3" target="_blank" class="btn btn-secondary link-pill" title="Open GitHub Project Board">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
           Project Board
         </a>
@@ -97,6 +102,9 @@
             <span class="badge" id="sessions-count">0</span>
           </div>
           <div style="display:flex; align-items:center; gap:4px;">
+            <button class="btn-icon" id="btn-show-projects" title="View Project Portfolio & Multi-Project Tables">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            </button>
             <button class="btn-icon" id="btn-show-dashboard" title="View Multi-Agent Dashboard">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="7" height="7"></rect>
@@ -151,6 +159,7 @@
 
       <!-- Center / Right Panel: Live Agent Console & Interactive Workspace -->
       <section class="console-panel" id="console-panel">
+        <projects-view id="global-projects-view" class="hidden"></projects-view>
         <agent-summary-overview id="global-dashboard" class="hidden"></agent-summary-overview>
 
         <div class="console-empty" id="console-empty">
@@ -910,6 +919,7 @@
   <script src="/static/components/git-tree-viewer.js"></script>
   <script src="/static/components/issue-viewer.js"></script>
   <script src="/static/components/agent-summary-overview.js"></script>
+  <script type="module" src="/static/components/projects-view.js"></script>
   <script src="/static/utils/api-client.js"></script>
   <script src="/static/utils/github-links.js"></script>
   <script src="/static/modules/formatters.js"></script>

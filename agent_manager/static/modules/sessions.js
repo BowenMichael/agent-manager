@@ -124,12 +124,33 @@ function showDashboardView() {
   const consoleActive = document.getElementById('console-active');
   const consoleEmpty = document.getElementById('console-empty');
   const globalDashboard = document.getElementById('global-dashboard');
+  const globalProjects = document.getElementById('global-projects-view');
 
   if (consoleActive) consoleActive.classList.add('hidden');
   if (consoleEmpty) consoleEmpty.classList.add('hidden');
+  if (globalProjects) globalProjects.classList.add('hidden');
   if (globalDashboard) {
     globalDashboard.classList.remove('hidden');
     globalDashboard.sessions = window.sessions;
+  }
+}
+
+function showProjectsView() {
+  window.activeSessionId = null;
+  document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
+  const consoleActive = document.getElementById('console-active');
+  const consoleEmpty = document.getElementById('console-empty');
+  const globalDashboard = document.getElementById('global-dashboard');
+  const globalProjects = document.getElementById('global-projects-view');
+
+  if (consoleActive) consoleActive.classList.add('hidden');
+  if (consoleEmpty) consoleEmpty.classList.add('hidden');
+  if (globalDashboard) globalDashboard.classList.add('hidden');
+  if (globalProjects) {
+    globalProjects.classList.remove('hidden');
+    if (typeof globalProjects.loadData === 'function') {
+      globalProjects.loadData();
+    }
   }
 }
 
@@ -145,10 +166,12 @@ function selectSession(sessionId) {
   if (!session) return;
 
   const globalDashboard = document.getElementById('global-dashboard');
+  const globalProjects = document.getElementById('global-projects-view');
   const consoleActive = document.getElementById('console-active');
   const consoleEmpty = document.getElementById('console-empty');
 
   if (globalDashboard) globalDashboard.classList.add('hidden');
+  if (globalProjects) globalProjects.classList.add('hidden');
   if (consoleEmpty) consoleEmpty.classList.add('hidden');
   if (consoleActive) consoleActive.classList.remove('hidden');
 
@@ -160,4 +183,5 @@ window.getFilteredSessions = getFilteredSessions;
 window.updateStats = updateStats;
 window.renderSessionsList = renderSessionsList;
 window.showDashboardView = showDashboardView;
+window.showProjectsView = showProjectsView;
 window.selectSession = selectSession;
