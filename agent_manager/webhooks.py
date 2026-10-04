@@ -46,6 +46,15 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
         is_ready = any(t in labels for t in ready_triggers)
 
         if action in ["labeled", "opened", "reopened"] and is_ready:
+            # Check if an active session already exists for this issue
+            active = [
+                s for s in runner.list_sessions()
+                if s.issue_number == issue_number and s.repo == repo and s.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING, AgentStatus.PAUSED]
+            ]
+            if active:
+                logger.info(f"Ignoring duplicate webhook event issues:{action} for {repo}#{issue_number} - session {active[0].session_id} is already active.")
+                return {"status": "ignored", "reason": "session_already_active", "session_id": active[0].session_id}
+
             prompt = (
                 f"You have been assigned to GitHub Issue #{issue_number} in {repo}.\n\n"
                 f"**Title**: {title}\n\n"

@@ -241,6 +241,19 @@ class AgentRunnerManager:
     async def spawn_agent(self, req: SpawnRequest) -> AgentSessionInfo:
         repo = req.repo or DEFAULT_REPO
         issue_number = req.issue_number
+
+        # Anti-Duplication Guardrail: Prevent spawning duplicate concurrent agents for the same issue
+        if issue_number:
+            existing = [
+                s for s in self.sessions.values()
+                if s.repo == repo and s.issue_number == issue_number and s.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING, AgentStatus.PAUSED]
+            ]
+            if existing:
+                logger.warning(
+                    f"Refusing to spawn duplicate agent for {repo}#{issue_number}: session {existing[0].session_id} is already {existing[0].status}"
+                )
+                return existing[0]
+
         session_id = f"issue-{issue_number}-{uuid.uuid4().hex}" if issue_number else str(uuid.uuid4())
 
         worktree_path = None
