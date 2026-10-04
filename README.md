@@ -121,6 +121,7 @@ Visit **`http://localhost:8000`** in your browser to open the Agent Manager Cont
 ## 🗺️ Documentation & Operations
 
 - 📖 [The Agent Manager Manifesto](MANIFESTO.md) — 8 Pillars, engineering lessons, and architecture charter.
+- 📖 [Production Deployment & Operations Guide](docs/deployment.md) — Cloud deployment, Render, PostgreSQL, Redis, custom domains & Expo EAS.
 - 📱 [Hosting, Expo & Feedback Flywheel Plan](docs/hosting_and_expo_plan.md) — Cloud deployment, Expo mobile client, and autonomous user feedback loop.
 - 🔄 [Agent Lifecycle & Quick-Resume Guide](docs/agent_lifecycle_and_resume_guide.md) — Turnkey instructions for pausing, stopping, and instantly resuming agents in a new chat.
 
