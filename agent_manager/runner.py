@@ -1366,6 +1366,22 @@ class AgentRunnerManager:
                 # Automatically compact / compress chat when process finishes successfully
                 if proc.returncode == 0 and session.status != AgentStatus.FAILED:
                     await self.compact_session(session_id)
+                    
+                    if getattr(config, "AUTO_MERGE_ENABLED", False) and session.repo and session.git_branch:
+                        try:
+                            from agent_manager.github import find_pr_for_branch, merge_pull_request
+                            pr_num = await find_pr_for_branch(session.repo, session.git_branch)
+                            if pr_num:
+                                logger.info(f"Auto-merging PR #{pr_num} for session {session_id} since it's IN_REVIEW.")
+                                res = await merge_pull_request(session.repo, pr_num)
+                                if res:
+                                    from agent_manager.poller import LocalGitWatcher
+                                    watcher = LocalGitWatcher()
+                                    if session.issue_number:
+                                        await watcher.update_issue_status(session.repo, session.issue_number, "done")
+                                    await self.complete_agent(session_id, reason="Auto-merged PR and marked as Done")
+                        except Exception as e:
+                            logger.error(f"Failed to auto-merge PR or mark issue as done: {e}")
 
                 self._save()
                 await self.broadcast("session_updated", session.model_dump())

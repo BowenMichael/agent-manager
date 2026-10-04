@@ -1000,6 +1000,11 @@ async function loadSettings() {
       }
     }
 
+    const checkAutoMerge = document.getElementById('check-auto-merge');
+    if (checkAutoMerge && typeof data.auto_merge_enabled === 'boolean') {
+      checkAutoMerge.checked = data.auto_merge_enabled;
+    }
+
     if (topbarGuardrailsBadge && !topbarGuardrailsBadge.dataset.listenerBound) {
       topbarGuardrailsBadge.dataset.listenerBound = 'true';
       topbarGuardrailsBadge.addEventListener('click', () => {
@@ -1120,6 +1125,7 @@ btnSaveSettings.addEventListener('click', async () => {
   const maxTokens = parseInt(document.getElementById('input-max-tokens')?.value || '150000', 10);
   const autoCompact = document.getElementById('check-auto-compact')?.checked ?? true;
   const guardrailsEnabled = document.getElementById('check-guardrails-enabled')?.checked ?? true;
+  const autoMergeEnabled = document.getElementById('check-auto-merge')?.checked ?? false;
   const workflowPipeline = document.getElementById('check-workflow-pipeline')?.checked ?? false;
   const sumModel = document.getElementById('select-pipeline-sum-model')?.value || 'gemini-3.8-flash';
   const sumEffort = document.getElementById('select-pipeline-sum-effort')?.value || 'low';
@@ -1142,6 +1148,7 @@ btnSaveSettings.addEventListener('click', async () => {
       max_session_tokens: maxTokens,
       compact_completed_chat: autoCompact,
       guardrails_enabled: guardrailsEnabled,
+      auto_merge_enabled: autoMergeEnabled,
       workflow_pipeline_enabled: workflowPipeline,
       pipeline_summary_model: sumModel,
       pipeline_summary_effort: sumEffort,

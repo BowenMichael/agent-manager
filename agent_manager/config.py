@@ -58,6 +58,7 @@ COMPACT_COMPLETED_CHAT = _saved_settings.get("compact_completed_chat") if "compa
 
 # Circuit Breaker & Turn Budget Guardrails
 GUARDRAILS_ENABLED = _saved_settings.get("guardrails_enabled") if "guardrails_enabled" in _saved_settings else (os.getenv("GUARDRAILS_ENABLED", "true").lower() in ("true", "1", "yes"))
+AUTO_MERGE_ENABLED = _saved_settings.get("auto_merge_enabled") if "auto_merge_enabled" in _saved_settings else (os.getenv("AUTO_MERGE_ENABLED", "false").lower() in ("true", "1", "yes"))
 MAX_TURNS_PER_SESSION = int(_saved_settings.get("max_turns_per_session") or os.getenv("MAX_TURNS_PER_SESSION", "15"))
 CIRCUIT_BREAKER_DUPLICATE_THRESHOLD = int(_saved_settings.get("circuit_breaker_duplicate_threshold") or os.getenv("CIRCUIT_BREAKER_DUPLICATE_THRESHOLD", "3"))
 CIRCUIT_BREAKER_MAX_CONSECUTIVE_READS = int(_saved_settings.get("circuit_breaker_max_consecutive_reads") or os.getenv("CIRCUIT_BREAKER_MAX_CONSECUTIVE_READS", "8"))

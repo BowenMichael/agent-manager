@@ -142,6 +142,24 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
                         "board_status": "in_progress"
                     }
 
+    # 4. Handling Pull Request Events for Auto-Merge
+    elif event == "pull_request":
+        from agent_manager.config import AUTO_MERGE_ENABLED
+        from agent_manager.github import merge_pull_request
+        
+        action = payload.get("action")
+        pr = payload.get("pull_request", {})
+        repo = payload.get("repository", {}).get("full_name", DEFAULT_REPO)
+        pr_number = pr.get("number")
+
+        if AUTO_MERGE_ENABLED and action in ["opened", "reopened", "synchronize"]:
+            logger.info(f"Auto-merging PR #{pr_number} in {repo} as requested.")
+            res = await merge_pull_request(repo, pr_number)
+            if res:
+                return {"status": "ok", "action": "pr_merged", "pr_number": pr_number}
+            else:
+                return {"status": "failed", "action": "pr_merge_failed"}
+
     return {"status": "ignored", "event": event, "action": payload.get("action")}
 
 @router.post("/github")

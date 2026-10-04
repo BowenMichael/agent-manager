@@ -685,6 +685,17 @@
             </div>
           </div>
 
+          <!-- Auto Merge Pull Requests -->
+          <div class="form-group" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 12px;">
+            <label style="display: flex; gap: 10px; align-items: center; cursor: pointer; margin-bottom: 4px;">
+              <input type="checkbox" id="check-auto-merge" style="width: 18px; height: 18px; accent-color: #10b981; cursor: pointer;">
+              <span style="font-weight: 600; font-size: 0.88rem; color: var(--text-primary);">Auto-Merge Pull Requests</span>
+            </label>
+            <small style="color: var(--text-secondary); display: block; margin-left: 28px; line-height: 1.4; font-size: 0.78rem;">
+              When enabled, PRs created by the agent are automatically squashed and merged upon opening, bypassing manual review and tests.
+            </small>
+          </div>
+
           <!-- Session Token Budget Limit -->
           <div class="form-group">
             <label style="font-weight: 600; margin-bottom: 6px; display: block;">Session Token Budget Guardrail</label>

@@ -133,3 +133,4 @@ class SettingsUpdateRequest(BaseModel):
     pipeline_implementation_model: Optional[str] = None
     pipeline_implementation_effort: Optional[str] = None
     guardrails_enabled: Optional[bool] = None
+    auto_merge_enabled: Optional[bool] = None
