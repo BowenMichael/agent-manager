@@ -2,7 +2,7 @@
  * Interactive File Viewer Modal: Fetches and displays file contents scoped to
  * the agent's worktree with line numbering and highlighted ranges.
  */
-
+(function() {
 let fileModalInstance = null;
 
 function ensureFileModal() {
@@ -160,3 +160,4 @@ async function openFileViewer(sessionId, filePath, options = {}) {
 // Export to global scope
 window.openFileViewer = openFileViewer;
 window.closeFileModal = closeFileModal;
+})();

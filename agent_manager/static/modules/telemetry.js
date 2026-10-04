@@ -1,4 +1,5 @@
 // Telemetry and Timescales UI Module
+(function() {
 let currentTelemetryData = null;
 let activeTimescale = '24h';
 
@@ -194,3 +195,4 @@ function initTelemetryEvents() {
 window.fetchAndRenderTelemetry = fetchAndRenderTelemetry;
 window.renderTelemetryView = renderTelemetryView;
 window.initTelemetryEvents = initTelemetryEvents;
+})();
