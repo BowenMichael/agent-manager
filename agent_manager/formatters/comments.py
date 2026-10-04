@@ -9,6 +9,7 @@ BADGE_AUTONOMOUS_AGENT = "🤖 **Autonomous Agent**"
 BADGE_AGENT_UPDATE = "🤖 **Agent Update**"
 BADGE_AGENT_TAKEOVER = "🤖 **Agent Takeover: Development Started**"
 BADGE_AGENT_PAUSED = "🤖 **Agent Paused**"
+BADGE_AGENT_INTERPRETATION = "🤖 **Agent Interpretation: Context & Scope Breakdown**"
 
 # Standard Metadata Disclaimer Footer
 FOOTER_SIGNATURE = "Posted automatically by Agent Manager"
