@@ -50,6 +50,9 @@ AGY_CLI_PATH = Path(os.environ.get("LOCALAPPDATA", r"C:\Users\tv\AppData\Local")
 # Antigravity CLI Execution Mode: 'terminal' (Default Option 1) or 'web_stream' (Override Option 2)
 AGY_MODE = (_saved_settings.get("agy_mode") or os.getenv("AGY_MODE", "terminal")).lower()
 
+IS_SERVER = (_saved_settings.get("is_server") if "is_server" in _saved_settings else os.getenv("IS_SERVER", "false").lower() in ("true", "1", "yes"))
+CLI_IDLE_TIMEOUT_MINUTES = int(_saved_settings.get("cli_idle_timeout_minutes") or os.getenv("CLI_IDLE_TIMEOUT_MINUTES", "30"))
+
 MAX_SESSION_TOKENS = int(_saved_settings.get("max_session_tokens") or os.getenv("MAX_SESSION_TOKENS", "150000"))
 COMPACT_COMPLETED_CHAT = _saved_settings.get("compact_completed_chat") if "compact_completed_chat" in _saved_settings else (os.getenv("COMPACT_COMPLETED_CHAT", "true").lower() in ("true", "1", "yes"))
 

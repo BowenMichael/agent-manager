@@ -96,6 +96,8 @@ async def get_settings():
         "available_models": getattr(config, "AVAILABLE_MODELS", []),
         "max_session_tokens": getattr(config, "MAX_SESSION_TOKENS", 150000),
         "compact_completed_chat": getattr(config, "COMPACT_COMPLETED_CHAT", True),
+        "is_server": getattr(config, "IS_SERVER", False),
+        "cli_idle_timeout_minutes": getattr(config, "CLI_IDLE_TIMEOUT_MINUTES", 30),
         "quota_status": quota_status
     }
 
@@ -182,6 +184,19 @@ async def update_settings(req: SettingsUpdateRequest):
         set_env("GEMINI_API_KEY", key_val)
         current_persisted["gemini_api_key"] = key_val
 
+    if req.is_server is not None:
+        config.IS_SERVER = bool(req.is_server)
+        os.environ["IS_SERVER"] = str(req.is_server).lower()
+        set_env("IS_SERVER", str(req.is_server).lower())
+        current_persisted["is_server"] = bool(req.is_server)
+
+    if req.cli_idle_timeout_minutes is not None:
+        timeout_val = int(req.cli_idle_timeout_minutes)
+        config.CLI_IDLE_TIMEOUT_MINUTES = timeout_val
+        os.environ["CLI_IDLE_TIMEOUT_MINUTES"] = str(timeout_val)
+        set_env("CLI_IDLE_TIMEOUT_MINUTES", str(timeout_val))
+        current_persisted["cli_idle_timeout_minutes"] = timeout_val
+
     try:
         env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception as e:
@@ -197,7 +212,9 @@ async def update_settings(req: SettingsUpdateRequest):
         "max_session_tokens": config.MAX_SESSION_TOKENS,
         "compact_completed_chat": config.COMPACT_COMPLETED_CHAT,
         "agy_mode": config.AGY_MODE,
-        "default_repo": config.DEFAULT_REPO
+        "default_repo": config.DEFAULT_REPO,
+        "is_server": config.IS_SERVER,
+        "cli_idle_timeout_minutes": config.CLI_IDLE_TIMEOUT_MINUTES
     }
     await runner.broadcast("settings_updated", result)
     return result

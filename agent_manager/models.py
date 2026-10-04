@@ -106,3 +106,5 @@ class SettingsUpdateRequest(BaseModel):
     agy_mode: Optional[str] = None
     compact_completed_chat: Optional[bool] = None
     default_repo: Optional[str] = None
+    is_server: Optional[bool] = None
+    cli_idle_timeout_minutes: Optional[int] = None

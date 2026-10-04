@@ -11,7 +11,8 @@ from fastapi import WebSocket
 
 from agent_manager.config import (
     DEFAULT_REPO, WORKSPACE_BASE, AGY_CLI_PATH,
-    AGY_MODE, MAX_SESSION_TOKENS, COMPACT_COMPLETED_CHAT
+    AGY_MODE, MAX_SESSION_TOKENS, COMPACT_COMPLETED_CHAT,
+    IS_SERVER, CLI_IDLE_TIMEOUT_MINUTES
 )
 from agent_manager.models import (
     AgentSessionInfo, AgentStatus, ConversationMessage,
@@ -486,9 +487,12 @@ class AgentRunnerManager:
         if queue:
             await queue.put(context)
 
-        # If a process or task is currently hung or executing, interrupt it to run the new instruction
+        current_mode = getattr(config, "AGY_MODE", AGY_MODE)
         proc = self._active_agents.get(session_id)
-        if proc and hasattr(proc, 'terminate'):
+        if current_mode == "terminal" and proc is not None:
+            # Active terminal is kept open across prompt turns to leverage server-side caching
+            logger.info(f"Preserving existing interactive terminal for session {session_id} across prompt turns.")
+        elif proc and hasattr(proc, 'terminate'):
             logger.info(f"Interrupting active/stalled process for session {session_id} to process new user context.")
             try:
                 proc.terminate()
@@ -574,12 +578,36 @@ class AgentRunnerManager:
                 title_str = f"Antigravity CLI (agy) - Issue #{issue_num} [{clean_model} / {clean_effort}]"
                 ps_cmd = f'powershell -NoExit -Command "$host.ui.RawUI.WindowTitle = \"{title_str}\"; {cmd}"'
 
+                existing_proc = self._active_agents.get(session_id)
+                is_proc_alive = False
+                if existing_proc is not None:
+                    if hasattr(existing_proc, 'poll'):
+                        is_proc_alive = (existing_proc.poll() is None)
+                    else:
+                        is_proc_alive = True
+
+                if is_continuation and is_proc_alive:
+                    from datetime import datetime
+                    session.last_activity_at = datetime.utcnow().isoformat()
+                    session.status = AgentStatus.IN_REVIEW
+                    await self._append_message(
+                        session_id,
+                        MessageRole.SYSTEM,
+                        f"⚡ [Option 1: Interactive Desktop Terminal] Active terminal retained for session at {cwd_dir}. "
+                        f"Prompt and server-side cache preserved across prompt turns."
+                    )
+                    self._save()
+                    await self.broadcast("session_updated", session.model_dump())
+                    return
+
                 await self._append_message(
                     session_id,
                     MessageRole.SYSTEM,
                     f"🚀 [Option 1: Interactive Desktop Terminal] Spawning Antigravity CLI session in dedicated PowerShell window at: {cwd_dir}\n"
                     f"Model: {clean_model} • Effort: {clean_effort}"
                 )
+                from datetime import datetime
+                session.last_activity_at = datetime.utcnow().isoformat()
                 self._save()
                 await self.broadcast("session_updated", session.model_dump())
 
@@ -782,7 +810,9 @@ class AgentRunnerManager:
             logger.exception(f"Error during agent session {session_id}: {e}")
             await self._append_message(session_id, MessageRole.SYSTEM, f"Agent encountered error: {str(e)}")
         finally:
-            self._active_agents.pop(session_id, None)
+            curr_mode = getattr(config, "AGY_MODE", AGY_MODE)
+            if curr_mode != "terminal":
+                self._active_agents.pop(session_id, None)
             self._save()
             await self.broadcast("session_updated", session.model_dump())
 
@@ -805,6 +835,37 @@ class AgentRunnerManager:
                                     s.current_activity = f"⚠️ Unresponsive / Hung on {act_name} ({int(elapsed)}s without output)"
                                     self._save()
                                     await self.broadcast("session_updated", s.model_dump())
+                            except Exception:
+                                pass
+
+                    # Server-side idle timeout management (only when running in server mode)
+                    is_srv = getattr(config, "IS_SERVER", IS_SERVER)
+                    if is_srv and s.status in [AgentStatus.RUNNING, AgentStatus.IN_REVIEW]:
+                        timeout_mins = getattr(config, "CLI_IDLE_TIMEOUT_MINUTES", CLI_IDLE_TIMEOUT_MINUTES)
+                        timeout_secs = timeout_mins * 60
+                        if s.last_activity_at:
+                            try:
+                                last_active = datetime.fromisoformat(s.last_activity_at)
+                                idle_elapsed = (now - last_active).total_seconds()
+                                if idle_elapsed > timeout_secs:
+                                    proc = self._active_agents.get(sid)
+                                    if proc is not None:
+                                        logger.info(f"Session {sid} exceeded idle timeout of {timeout_mins}m on server. Closing CLI instance.")
+                                        if hasattr(proc, 'terminate'):
+                                            try:
+                                                proc.terminate()
+                                            except Exception:
+                                                pass
+                                        self._active_agents.pop(sid, None)
+                                        s.status = AgentStatus.IDLE
+                                        s.current_activity = f"💤 Idle CLI instance closed after {timeout_mins}m inactivity."
+                                        await self._append_message(
+                                            sid,
+                                            MessageRole.SYSTEM,
+                                            f"💤 [Server Idle Timeout] CLI terminal automatically closed after {timeout_mins} minutes of inactivity to preserve server resources."
+                                        )
+                                        self._save()
+                                        await self.broadcast("session_updated", s.model_dump())
                             except Exception:
                                 pass
             except asyncio.CancelledError:
