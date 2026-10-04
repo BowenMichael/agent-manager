@@ -63,8 +63,11 @@ class AgentSessionInfo(BaseModel):
     quota_message: Optional[str] = None
     seen_comment_ids: List[str] = Field(default_factory=list)
     last_issue_body: Optional[str] = None
+    is_archived: bool = False
+    archived_at: Optional[str] = None
     is_compacted: bool = False
     compact_summary: Optional[str] = None
+
 
 class SpawnRequest(BaseModel):
     repo: Optional[str] = None
