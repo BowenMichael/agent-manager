@@ -1,7 +1,6 @@
 // Settings Data Loader & Population Module
 
 async function loadSettings() {
-  const apiKeyBanner = document.getElementById('api-key-banner');
   const keyStatusDisplay = document.getElementById('key-status-display');
 
   try {
@@ -9,13 +8,11 @@ async function loadSettings() {
     if (!data) return;
 
     if (data.has_gemini_api_key) {
-      if (apiKeyBanner) apiKeyBanner.classList.add('hidden');
       if (keyStatusDisplay) {
         keyStatusDisplay.textContent = 'Active: ' + data.masked_gemini_api_key;
         keyStatusDisplay.style.color = 'var(--accent-green)';
       }
     } else {
-      if (apiKeyBanner) apiKeyBanner.classList.remove('hidden');
       if (keyStatusDisplay) {
         keyStatusDisplay.textContent = 'Not configured';
         keyStatusDisplay.style.color = 'var(--accent-amber)';
