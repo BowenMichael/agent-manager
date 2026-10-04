@@ -40,16 +40,8 @@ query($projectId: ID!) {
 async def fetch_board_items_per_project() -> Dict[str, Dict[str, Any]]:
     """
     Fetches items from configured GitHub Project Boards and categorizes
-    them into active_items and backlog_items, grouped by project_id.
-    Returns:
-        Dict[str, Dict[str, Any]]: {
-            project_id: {
-                "project_id": str,
-                "board_title": str,
-                "active_items": List[Dict[str, Any]],
-                "backlog_items": List[Dict[str, Any]],
-            }
-        }
+    them into active_items, in_review_items, and backlog_items per project.
+    Note: Items in 'In Review' DO NOT count as running agents.
     """
     if not GITHUB_PERSONAL_ACCESS_TOKEN:
         logger.warning("[Cron Dispatcher] No GitHub Personal Access Token configured. Skipping.")
@@ -69,6 +61,7 @@ async def fetch_board_items_per_project() -> Dict[str, Dict[str, Any]]:
                 "project_id": bid,
                 "board_title": bid,
                 "active_items": [],
+                "in_review_items": [],
                 "backlog_items": [],
             }
             resp = await client.post(
@@ -105,26 +98,33 @@ async def fetch_board_items_per_project() -> Dict[str, Dict[str, Any]]:
                     "status": status_name
                 }
 
-                if "In Progress" in status_name or "Ready for Agent" in status_name or "In Review" in status_name:
+                s_lower = status_name.lower()
+                # Active agents are strictly 'In Progress' or 'Ready for Agent'
+                if "progress" in s_lower or "ready" in s_lower:
                     projects_data[bid]["active_items"].append(item_data)
-                elif "Backlog" in status_name:
+                elif "review" in s_lower:
+                    # In Review agents do NOT count as running/active agents
+                    projects_data[bid]["in_review_items"].append(item_data)
+                elif "backlog" in s_lower:
                     projects_data[bid]["backlog_items"].append(item_data)
 
     return projects_data
 
 
-async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+async def fetch_board_items() -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
     Fetches items from configured GitHub Project Boards and categorizes
-    them into global active_items and backlog_items (backwards compatibility).
+    them into global active_items, backlog_items, and in_review_items.
     """
     projects_data = await fetch_board_items_per_project()
     active_items: List[Dict[str, Any]] = []
     backlog_items: List[Dict[str, Any]] = []
+    in_review_items: List[Dict[str, Any]] = []
     for pdata in projects_data.values():
         active_items.extend(pdata.get("active_items", []))
         backlog_items.extend(pdata.get("backlog_items", []))
-    return active_items, backlog_items
+        in_review_items.extend(pdata.get("in_review_items", []))
+    return active_items, backlog_items, in_review_items
 
 
 async def promote_backlog_issue(watcher: Any, issue_item: Dict[str, Any]) -> tuple[bool, str]:

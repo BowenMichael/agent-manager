@@ -4,14 +4,16 @@ from typing import Dict, Any, List, Set, Tuple
 logger = logging.getLogger("agent_manager.cron.evaluator")
 
 
-def inspect_active_local_agents() -> Tuple[List[str], Set[str]]:
+def inspect_active_local_agents() -> Tuple[List[str], Set[str], List[str]]:
     """
     Inspects running or initializing agent sessions locally.
+    In Review agents DO NOT count as running agents.
     Returns:
-        (active_local_agents, active_local_issue_keys)
+        (active_local_agents, active_local_issue_keys, in_review_agents)
     """
     active_local_agents: List[str] = []
     active_local_issue_keys: Set[str] = set()
+    in_review_agents: List[str] = []
 
     try:
         from agent_manager.runner import AgentRunnerManager
@@ -19,21 +21,36 @@ def inspect_active_local_agents() -> Tuple[List[str], Set[str]]:
 
         runner = AgentRunnerManager()
         for s in runner.list_sessions(include_archived=False):
+            # In Review agents do NOT count as running agents
             if s.status in (AgentStatus.RUNNING, AgentStatus.INITIALIZING):
                 active_local_agents.append(s.session_id)
                 if s.repo and s.issue_number:
                     active_local_issue_keys.add(f"{s.repo}#{s.issue_number}".lower())
                     active_local_issue_keys.add(str(s.issue_number))
+            elif s.status == AgentStatus.IN_REVIEW:
+                in_review_agents.append(s.session_id)
 
         if getattr(runner, "_active_agents", None):
             for sid, proc in runner._active_agents.items():
                 if proc and getattr(proc, "returncode", None) is None:
+                    sess = runner.get_session(sid)
+                    # Exclude IN_REVIEW, PAUSED, STOPPED, COMPLETED sessions
+                    if sess and sess.status in (AgentStatus.IN_REVIEW, AgentStatus.PAUSED, AgentStatus.STOPPED, AgentStatus.COMPLETED):
+                        if sess.status == AgentStatus.IN_REVIEW and sid not in in_review_agents:
+                            in_review_agents.append(sid)
+                        continue
                     if sid not in active_local_agents:
                         active_local_agents.append(sid)
     except Exception as e:
         logger.warning(f"[Cron Dispatcher] Could not inspect local agent sessions: {e}")
 
-    return active_local_agents, active_local_issue_keys
+    if in_review_agents:
+        logger.info(
+            f"[Cron Dispatcher] Observed {len(in_review_agents)} local agent(s) in review "
+            f"({in_review_agents}) - not counted as running agents."
+        )
+
+    return active_local_agents, active_local_issue_keys, in_review_agents
 
 
 async def evaluate_and_dispatch_projects(
@@ -54,7 +71,15 @@ async def evaluate_and_dispatch_projects(
     for pid, pdata in boards_data.items():
         board_title = pdata.get("board_title", pid)
         active_items = pdata.get("active_items", [])
+        in_review_items = pdata.get("in_review_items", [])
         backlog_items = pdata.get("backlog_items", [])
+
+        if in_review_items:
+            rev_desc = [f"#{x.get('issue_number')}" for x in in_review_items]
+            logger.info(
+                f"[Cron Dispatcher] Observed {len(in_review_items)} item(s) in review for [{board_title}] "
+                f"({', '.join(rev_desc)}) - not counted as running agents."
+            )
 
         # Check if any board items match running local agents
         local_active_for_project = []
@@ -79,6 +104,8 @@ async def evaluate_and_dispatch_projects(
                 "message": msg,
                 "active_count": len(active_items) + len(local_active_for_project),
                 "active_items": active_items,
+                "in_review_count": len(in_review_items),
+                "in_review_items": in_review_items,
                 "backlog_count": len(backlog_items)
             }
             continue
@@ -91,6 +118,8 @@ async def evaluate_and_dispatch_projects(
                 "board_title": board_title,
                 "message": msg,
                 "active_count": 0,
+                "in_review_count": len(in_review_items),
+                "in_review_items": in_review_items,
                 "backlog_count": 0
             }
             continue
@@ -105,6 +134,7 @@ async def evaluate_and_dispatch_projects(
                 "board_title": board_title,
                 "message": msg,
                 "promoted_issue": chosen,
+                "in_review_count": len(in_review_items),
                 "remaining_backlog_count": len(backlog_items) - 1
             }
         else:
@@ -112,7 +142,8 @@ async def evaluate_and_dispatch_projects(
                 "status": "error",
                 "board_title": board_title,
                 "message": msg,
-                "attempted_issue": chosen
+                "attempted_issue": chosen,
+                "in_review_count": len(in_review_items)
             }
 
     # Aggregate status

@@ -22,13 +22,19 @@ async def check_and_update_agent_manager() -> Dict[str, Any]:
         from agent_manager.runner import AgentRunnerManager
         from agent_manager.models import AgentStatus
         runner = AgentRunnerManager()
-        for s in runner.list_sessions():
+        for s in runner.list_sessions(include_archived=False):
+            # In Review agents do NOT count as running agents
             if s.status in (AgentStatus.RUNNING, AgentStatus.INITIALIZING):
                 running_sessions.append(f"Session {s.session_id} (Issue #{s.issue_number}: {s.title}) [{s.status}]")
         if getattr(runner, "_active_agents", None):
             for sid, proc in runner._active_agents.items():
                 if proc and getattr(proc, "returncode", None) is None:
-                    running_sessions.append(f"Subprocess for session {sid}")
+                    sess = runner.get_session(sid)
+                    # Exclude IN_REVIEW, PAUSED, STOPPED, COMPLETED sessions
+                    if sess and sess.status in (AgentStatus.IN_REVIEW, AgentStatus.PAUSED, AgentStatus.STOPPED, AgentStatus.COMPLETED):
+                        continue
+                    if not any(sid in item for item in running_sessions):
+                        running_sessions.append(f"Subprocess for session {sid}")
     except Exception as e:
         logger.warning("[Cron Dispatcher] Could not inspect active runner sessions: %s", e)
 

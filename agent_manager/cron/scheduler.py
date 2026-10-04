@@ -43,14 +43,15 @@ class ProjectBacklogDispatcher:
         """
         Evaluates active tasks on a per-project/board basis and promotes backlog items:
         1. Checks if agent-manager is on the latest version of main and updates it (if no agents running).
-        2. Inspects local active agent sessions (running/initializing).
+        2. Inspects local active agent sessions (running/initializing; IN_REVIEW agents do NOT count).
         3. Evaluates active issues and running agents per project board.
         4. If a project has no active work in progress, selects and promotes one issue from its backlog.
         5. Projects with active work are skipped without blocking idle projects.
         """
         self.last_run_at = datetime.now(timezone.utc).isoformat()
 
-        active_local_agents, active_local_issue_keys = inspect_active_local_agents()
+        active_local_agents, active_local_issue_keys, in_review_agents = inspect_active_local_agents()
+
         update_result = await self.check_and_update_agent_manager()
 
         logger.info("[Cron Dispatcher] Checking project boards for active / ready issues per project...")
@@ -59,12 +60,11 @@ class ProjectBacklogDispatcher:
             return {"status": "error", "message": "Missing GITHUB_PERSONAL_ACCESS_TOKEN", "update_result": update_result}
 
         try:
-            # Fetch board items grouped per project
             boards_data = await fetch_board_items_per_project()
             if not boards_data:
-                # Fallback to fetch_board_items if fetch_board_items_per_project returns empty or is mocked
-                active_items, backlog_items = await fetch_board_items()
-                # Group them if flat lists were returned
+                res = await fetch_board_items()
+                active_items, backlog_items = res[0], res[1]
+                in_review_items = res[2] if len(res) > 2 else []
                 boards_data = {}
                 for item in active_items:
                     pid = item.get("project_id", "default")
@@ -73,9 +73,21 @@ class ProjectBacklogDispatcher:
                             "project_id": pid,
                             "board_title": item.get("board_title", pid),
                             "active_items": [],
+                            "in_review_items": [],
                             "backlog_items": [],
                         }
                     boards_data[pid]["active_items"].append(item)
+                for item in in_review_items:
+                    pid = item.get("project_id", "default")
+                    if pid not in boards_data:
+                        boards_data[pid] = {
+                            "project_id": pid,
+                            "board_title": item.get("board_title", pid),
+                            "active_items": [],
+                            "in_review_items": [],
+                            "backlog_items": [],
+                        }
+                    boards_data[pid]["in_review_items"].append(item)
                 for item in backlog_items:
                     pid = item.get("project_id", "default")
                     if pid not in boards_data:
@@ -83,6 +95,7 @@ class ProjectBacklogDispatcher:
                             "project_id": pid,
                             "board_title": item.get("board_title", pid),
                             "active_items": [],
+                            "in_review_items": [],
                             "backlog_items": [],
                         }
                     boards_data[pid]["backlog_items"].append(item)
@@ -93,6 +106,7 @@ class ProjectBacklogDispatcher:
                 self.watcher,
                 promote_backlog_issue
             )
+            result["in_review_local_agents"] = in_review_agents
             self.dispatch_history.append({"timestamp": self.last_run_at, **result})
             return result
 

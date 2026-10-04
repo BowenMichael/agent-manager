@@ -93,6 +93,9 @@ async def handle_ready_status(watcher, active_session, item_id: str, issue_num: 
         if not active_sessions and issue_key not in watcher.active_issues:
             logger.info("Found new issue #%s in Ready for Agent. Preparing agent session and evaluating interpretation...", issue_num)
             watcher.active_issues.add(issue_key)
+            # Immediate Project Board update to '⚡ In Progress' per AGENTS.md rule
+            await watcher.update_item_status(item_id, "in_progress")
+            logger.info("Updated Issue #%s Project Board status immediately to '⚡ In Progress' on takeover", issue_num)
 
             prompt_body = body
             if is_empty_or_template_only(body):

@@ -22,6 +22,16 @@ async def run_agent_loop(manager, session_id: str, initial_prompt: str, worktree
     try:
         session.status = AgentStatus.RUNNING
         manager._save()
+        await manager.broadcast("session_updated", session.model_dump())
+
+        if session.repo and session.issue_number:
+            try:
+                from agent_manager.poller import LocalGitWatcher
+                watcher = LocalGitWatcher()
+                asyncio.create_task(watcher.update_issue_status(session.repo, session.issue_number, "in_progress"))
+            except Exception as e:
+                logger.warning(f"Could not sync Project Board status to in_progress for #{session.issue_number}: {e}")
+
         cwd_dir = worktree_path or str(WORKSPACE_BASE)
         issue_num = session.issue_number or 0
         branch_name = session.git_branch or f"feat/issue-{issue_num}"
