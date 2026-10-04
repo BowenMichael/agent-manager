@@ -272,83 +272,84 @@ class LocalGitWatcher:
                     self.active_issues.discard(issue_key)
                     continue
 
-                # 2. AUTO-SYNC: If session is IN_REVIEW, ensure Project Board is marked In Review
-                for s in self.runner.list_sessions():
-                    if s.issue_number == issue_num and s.repo == repo and s.status == AgentStatus.IN_REVIEW:
-                        if status_name == "⚡ In Progress":
-                            await self.update_item_status(item["id"], "in_review")
-                            logger.info("Updated Issue #%s Project Board status to '🔍 In Review'", issue_num)
+                # 2. ACTIVE COMMENT POLLING: Check for new user comments on active/in-review sessions
+                active_session = next(
+                    (s for s in reversed(self.runner.list_sessions()) if s.issue_number == issue_num and s.repo == repo and s.status != AgentStatus.COMPLETED),
+                    None
+                )
 
-                # 3. RE-QUEUE & NEW ISSUE: Status is '📋 Ready for Agent'
-                if status_name == STATUS_NAMES["ready"]:
-                    existing_session = next(
-                        (s for s in self.runner.list_sessions() if s.issue_number == issue_num and s.repo == repo),
-                        None
-                    )
+                if active_session:
+                    seen_ids = {str(x) for x in active_session.seen_comment_ids}
+                    new_comments = [
+                        c for c in comments
+                        if str(c.get("id")) not in seen_ids
+                        and not (c.get("body") or "").startswith("🤖 **Agent")
+                        and not (c.get("body") or "").startswith("🚀 **Task Complete")
+                    ]
 
-                    if existing_session:
-                        # Check what has been added to the issue since last run
-                        new_comments = [
-                            c for c in comments
-                            if c.get("id") not in existing_session.seen_comment_ids
-                            and not (c.get("body") or "").startswith("🤖 **Agent")
-                            and not (c.get("body") or "").startswith("🚀 **Task Complete")
-                        ]
-                        body_changed = (
-                            existing_session.last_issue_body is not None and
-                            body.strip() != existing_session.last_issue_body.strip()
+                    if new_comments:
+                        update_sections = ["### New Comment(s) from User on GitHub:"]
+                        for nc in new_comments:
+                            author = nc.get("author", {}).get("login", "User")
+                            update_sections.append(f"- **@{author}**: {nc.get('body', '').strip()}")
+                            active_session.seen_comment_ids.append(str(nc.get("id")))
+
+                        feedback_text = "\n\n".join(update_sections)
+                        logger.info(
+                            "Issue #%s has %d new user comment(s). Injecting continuation context into session %s.",
+                            issue_num, len(new_comments), active_session.session_id
                         )
+                        active_session.last_issue_body = body
+                        self.runner._save()
 
-                        if new_comments or body_changed:
-                            update_sections = []
-                            if body_changed:
-                                update_sections.append(f"### Updated Issue Description:\n{body.strip()}")
-                            if new_comments:
-                                update_sections.append("### New Comments Added by User:")
-                                for nc in new_comments:
-                                    author = nc.get("author", {}).get("login", "User")
-                                    update_sections.append(f"- **@{author}**: {nc.get('body', '').strip()}")
-
-                            feedback_text = "\n\n".join(update_sections)
-                            logger.info("Issue #%s was moved back to Ready for Agent with new updates (%d new comments). Injecting continuation context.", issue_num, len(new_comments))
-
-                            # Update seen comments and body
-                            for c in comments:
-                                if c.get("id") not in existing_session.seen_comment_ids:
-                                    existing_session.seen_comment_ids.append(c.get("id"))
-                            existing_session.last_issue_body = body
-                            self.runner._save()
-
-                            # Move status on board to In Progress
+                        # Move status on Project Board to In Progress per AGENTS.md rule
+                        if status_name != STATUS_NAMES["in_progress"]:
                             await self.update_item_status(item["id"], "in_progress")
-                            logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
+                            logger.info("Updated Issue #%s Project Board status to '⚡ In Progress' due to new comment", issue_num)
 
-                            continuation_prompt = (
-                                f"Issue #{issue_num} was moved back to Ready for Agent with new updates:\n\n"
-                                f"{feedback_text}\n\n"
-                                f"**Operational Instructions**:\n"
-                                f"- Work inside the existing isolated worktree ({existing_session.worktree_path}) and branch ({existing_session.git_branch}).\n"
-                                f"- Address all new requirements and user feedback.\n"
-                                f"- Follow AGENTS.md rules: do not add issue labels, keep status transitions purely on the Project Board.\n"
-                                f"- Commit changes, push to branch, and report your progress."
-                            )
-                            await self.runner.add_context(existing_session.session_id, continuation_prompt)
+                        continuation_prompt = (
+                            f"A user commented on GitHub Issue #{issue_num} ({repo}):\n\n"
+                            f"{feedback_text}\n\n"
+                            f"**Operational Guidelines**:\n"
+                            f"- Address the user's question or feedback directly.\n"
+                            f"- Follow AGENTS.md rules: do not add issue labels, keep status transitions purely on the Project Board.\n"
+                            f"- If code changes or tests are needed, execute them in your worktree.\n"
+                            f"- When finished, summarize your findings or post your response."
+                        )
+                        await self.runner.add_context(active_session.session_id, continuation_prompt)
+                        continue
 
-                        elif existing_session.status in [AgentStatus.IN_REVIEW, AgentStatus.IDLE, AgentStatus.PAUSED]:
-                            # No new text added, but user dragged it back to Ready for Agent
-                            logger.info("Issue #%s moved back to Ready for Agent with no new comments. Triggering continuation pass.", issue_num)
-                            for c in comments:
-                                if c.get("id") not in existing_session.seen_comment_ids:
-                                    existing_session.seen_comment_ids.append(c.get("id"))
-                            existing_session.last_issue_body = body
-                            self.runner._save()
+                # 3. AUTO-SYNC: If session is IN_REVIEW and no new comments, ensure Project Board is marked In Review
+                if active_session and active_session.status == AgentStatus.IN_REVIEW:
+                    if status_name != STATUS_NAMES["in_review"]:
+                        await self.update_item_status(item["id"], "in_review")
+                        logger.info("Updated Issue #%s Project Board status to '🔍 In Review'", issue_num)
 
-                            await self.update_item_status(item["id"], "in_progress")
-                            continuation_prompt = (
-                                f"Issue #{issue_num} has been moved back into Ready for Agent.\n"
-                                f"Please review the work completed in the worktree, test existing features, and continue working on any remaining requirements."
-                            )
-                            await self.runner.add_context(existing_session.session_id, continuation_prompt)
+                # 4. RE-QUEUE & NEW ISSUE: Status is '📋 Ready for Agent'
+                if status_name == STATUS_NAMES["ready"]:
+                    if active_session:
+                        # User dragged card back into Ready for Agent
+                        body_changed = (
+                            active_session.last_issue_body is not None and
+                            body.strip() != active_session.last_issue_body.strip()
+                        )
+                        logger.info("Issue #%s was moved back to Ready for Agent. Triggering continuation pass.", issue_num)
+                        active_session.last_issue_body = body
+                        self.runner._save()
+
+                        await self.update_item_status(item["id"], "in_progress")
+                        logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
+
+                        prompt_text = f"Issue #{issue_num} has been moved back into Ready for Agent."
+                        if body_changed:
+                            prompt_text += f"\n\n### Updated Issue Description:\n{body.strip()}"
+
+                        continuation_prompt = (
+                            f"{prompt_text}\n\n"
+                            f"Please review the work completed in the worktree, test existing features, and continue working on any remaining requirements."
+                        )
+                        await self.runner.add_context(active_session.session_id, continuation_prompt)
+                        continue
 
                     else:
                         # Brand new agent task spawn
