@@ -1,5 +1,5 @@
 // WebSocket Connection & Real-Time Event Dispatcher Module
-
+(function() {
 function connectWebSocket() {
   const connectionStatus = document.getElementById('connection-status');
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -196,3 +196,4 @@ window.handleWsMessage = handleWsMessage;
 window.handleThoughtStream = handleThoughtStream;
 window.finalizeThoughtBubble = finalizeThoughtBubble;
 window.handleTokenStream = handleTokenStream;
+})();
