@@ -1,0 +1,89 @@
+/* Command Output UI */
+.command-output-card {
+  background: #11141d;
+  border: 1px solid #1f293d;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+.command-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #161b26;
+  border-bottom: 1px solid #1f293d;
+  cursor: pointer;
+  user-select: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: #c9d1d9;
+}
+
+.command-output-header:hover {
+  background: #1a2232;
+}
+
+.command-output-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.command-output-title svg {
+  transition: transform 0.2s ease;
+}
+
+.command-output-card.collapsed .command-output-title svg {
+  transform: rotate(-90deg);
+}
+
+.command-output-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.command-output-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.command-output-btn {
+  background: transparent;
+  border: 1px solid #2d3748;
+  color: #a0aec0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.command-output-btn:hover {
+  color: #fff;
+  border-color: #4a5568;
+}
+
+.command-output-body {
+  padding: 10px;
+  max-height: 380px;
+  overflow-y: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #0d1117;
+}
+
+.command-output-card.collapsed .command-output-body {
+  display: none;
+}

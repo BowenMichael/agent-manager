@@ -21,6 +21,7 @@ from agent_manager.models import (
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.storage import save_settings, load_settings
 from agent_manager.webhooks import router as webhooks_router, process_github_event
+from agent_manager.api.files import router as files_router
 from agent_manager.poller import LocalGitWatcher
 
 
@@ -69,6 +70,7 @@ app.add_middleware(
 
 runner = AgentRunnerManager()
 app.include_router(webhooks_router)
+app.include_router(files_router)
 
 # REST Endpoints
 @app.get("/api/settings")
