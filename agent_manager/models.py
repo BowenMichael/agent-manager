@@ -48,6 +48,11 @@ class AgentSessionInfo(BaseModel):
     started_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
     turn_count: int = 0
+    max_turns: int = 15
+    consecutive_duplicate_tool_count: int = 0
+    consecutive_view_file_count: int = 0
+    last_tool_signature: Optional[str] = None
+    circuit_breaker_triggered: bool = False
     token_count: int = 0
     input_tokens: int = 0
     output_tokens: int = 0

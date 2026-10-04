@@ -29,6 +29,20 @@ STATUS_OPTIONS = {
     "done": "b167c286"          # ✅ Done
 }
 
+def is_empty_or_template_only(body: Optional[str]) -> bool:
+    """Detects if an issue body contains only template boilerplate or empty comments."""
+    if not body or not body.strip():
+        return True
+    import re
+    # Strip markdown comments <!-- ... -->
+    cleaned = re.sub(r'<!--.*?-->', '', body, flags=re.DOTALL)
+    # Strip markdown headers, checkboxes, and standard template section titles
+    cleaned = re.sub(r'#+\s*', '', cleaned)
+    cleaned = re.sub(r'-\s*\[\s*\]\s*Criterion\s*\d+', '', cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'-\s*\[\s*\]\s*', '', cleaned)
+    cleaned = re.sub(r'(Objective|Acceptance Criteria|Requirements|Description|Context):?', '', cleaned, flags=re.IGNORECASE)
+    return len(cleaned.strip()) < 15
+
 class LocalGitWatcher:
     """
     Local Git & Project Board Synchronizer.
@@ -364,13 +378,29 @@ class LocalGitWatcher:
                             await self.update_item_status(item["id"], "in_progress")
                             logger.info("Updated Issue #%s Project Board status to '⚡ In Progress'", issue_num)
 
+                            prompt_body = body
+                            if is_empty_or_template_only(body):
+                                logger.warning(
+                                    "Issue #%s has empty/placeholder description. Adding guidance note to prevent blind exploratory loops.",
+                                    issue_num
+                                )
+                                prompt_body = (
+                                    f"{body}\n\n"
+                                    f"⚠️ **Note on Scope**: The issue description contains template placeholders. "
+                                    f"Focus strictly on achieving the objective specified in the title: '{title}'. "
+                                    f"Do not guess non-existent criteria."
+                                )
+
                             prompt = (
                                 f"You have been assigned to GitHub Issue #{issue_num} in {repo}.\n\n"
                                 f"**Title**: {title}\n\n"
-                                f"**Requirements / Description**:\n{body}\n\n"
-                                f"**Operational Guidelines**:\n"
+                                f"**Requirements / Description**:\n{prompt_body}\n\n"
+                                f"**Operational Guidelines & Efficiency Rules**:\n"
                                 f"- Work inside the designated branch and isolated worktree .worktrees/issue-{issue_num}.\n"
-                                f"- Inspect existing code patterns before modifying.\n"
+                                f"- SEARCH FIRST: Always use grep_search to find exact symbol, function, or line locations BEFORE calling view_file.\n"
+                                f"- SLICE READING ONLY: When calling view_file, ALWAYS supply StartLine and EndLine (max 100 lines at once). NEVER view entire large files over 200 lines.\n"
+                                f"- NEVER RE-READ: Do NOT call view_file on the same file or line range twice in a row. Rely on context and proceed directly to code edits or tests.\n"
+                                f"- CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
                                 f"- Follow AGENTS.md rules and keep documentation updated.\n"
                                 f"- CRITICAL RULE: Do NOT add, remove, or modify GitHub issue labels/tags. Status transitions are managed purely on the GitHub Project Board columns.\n"
                                 f"- When done, commit changes, open a pull request, and summarize your work."

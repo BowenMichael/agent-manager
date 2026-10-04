@@ -239,6 +239,11 @@ class AgentRunnerManager:
 
         session.status = AgentStatus.INITIALIZING
         session.error_message = None
+        session.turn_count = 0
+        session.consecutive_duplicate_tool_count = 0
+        session.consecutive_view_file_count = 0
+        session.last_tool_signature = None
+        session.circuit_breaker_triggered = False
         # Apply updated model and effort settings on restart
         session.model = getattr(config, "DEFAULT_MODEL", session.model or "gemini-3.8-flash")
         session.effort = getattr(config, "DEFAULT_EFFORT", session.effort or "high")
@@ -263,7 +268,7 @@ class AgentRunnerManager:
         return session
 
     async def resume_agent(self, session_id: str) -> bool:
-        """Resumes a paused agent session (e.g. after raising token limit)."""
+        """Resumes a paused agent session (e.g. after raising token limit or resetting circuit breaker)."""
         session = self.sessions.get(session_id)
         if not session:
             return False
@@ -272,6 +277,11 @@ class AgentRunnerManager:
         session.error_message = None
         session.quota_exceeded = False
         session.quota_message = None
+        session.turn_count = 0
+        session.consecutive_duplicate_tool_count = 0
+        session.consecutive_view_file_count = 0
+        session.last_tool_signature = None
+        session.circuit_breaker_triggered = False
         # Apply updated model and effort settings on resume
         session.model = getattr(config, "DEFAULT_MODEL", session.model or "gemini-3.8-flash")
         session.effort = getattr(config, "DEFAULT_EFFORT", session.effort or "high")
@@ -531,6 +541,11 @@ class AgentRunnerManager:
         session.is_stalled = False
         session.quota_exceeded = False
         session.quota_message = None
+        session.turn_count = 0
+        session.consecutive_duplicate_tool_count = 0
+        session.consecutive_view_file_count = 0
+        session.last_tool_signature = None
+        session.circuit_breaker_triggered = False
         session.current_activity = "Processing new user instructions..."
 
         # Apply updated model and effort for this prompt
@@ -799,11 +814,16 @@ class AgentRunnerManager:
                 f"Working Directory: {cwd_dir}\n"
                 f"Git Branch: {branch_name}\n\n"
                 f"Task Description:\n{initial_prompt}\n\n"
-                f"RULES:\n"
+                f"RULES & EFFICIENCY GUARDRAILS:\n"
                 f"1. Make changes in this directory.\n"
                 f"2. Follow AGENTS.md conventions.\n"
-                f"3. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
-                f"4. Once changes are ready, commit and create a pull request if appropriate.\n"
+                f"3. CRITICAL TOOL EFFICIENCY (Prevent Runaway Token Spend):\n"
+                f"   - SEARCH FIRST: Always use grep_search to find exact symbol, function, or line locations BEFORE calling view_file.\n"
+                f"   - SLICE READING ONLY: When calling view_file, ALWAYS supply StartLine and EndLine (max 100 lines at once). NEVER view entire large files over 200 lines.\n"
+                f"   - NEVER RE-READ: Do NOT call view_file on the same file or line range twice in a row. Rely on context and proceed directly to code edits or tests.\n"
+                f"4. CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
+                f"5. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
+                f"6. Once changes are ready, commit and create a pull request if appropriate.\n"
             )
 
             # Option 1: Terminal Mode
@@ -955,6 +975,146 @@ class AgentRunnerManager:
                                         tool_name=tname,
                                         tool_args=tparams
                                     )
+
+                                    # Normalized tool signature for duplicate detection
+                                    clean_args = {k: v for k, v in tparams.items() if k not in ("toolAction", "toolSummary")}
+                                    tool_sig = f"{tname}:{json.dumps(clean_args, sort_keys=True)}"
+
+                                    # 1. CIRCUIT BREAKER: Duplicate Consecutive Tool Call Check
+                                    if session.last_tool_signature == tool_sig:
+                                        session.consecutive_duplicate_tool_count += 1
+                                    else:
+                                        session.last_tool_signature = tool_sig
+                                        session.consecutive_duplicate_tool_count = 1
+
+                                    dup_threshold = getattr(config, "CIRCUIT_BREAKER_DUPLICATE_THRESHOLD", 3)
+                                    if session.consecutive_duplicate_tool_count >= dup_threshold:
+                                        logger.warning(
+                                            f"[Circuit Breaker] Repetitive tool loop detected for session {session_id}: "
+                                            f"'{tname}' executed {session.consecutive_duplicate_tool_count} consecutive times with identical arguments."
+                                        )
+                                        session.status = AgentStatus.PAUSED
+                                        session.circuit_breaker_triggered = True
+                                        session.error_message = (
+                                            f"Circuit Breaker Triggered: Repetitive tool loop detected. "
+                                            f"'{tname}' was called {session.consecutive_duplicate_tool_count} consecutive times with identical arguments."
+                                        )
+                                        if proc.returncode is None:
+                                            try:
+                                                proc.terminate()
+                                            except Exception:
+                                                pass
+
+                                        await self._append_message(
+                                            session_id,
+                                            MessageRole.SYSTEM,
+                                            f"🛑 **[Circuit Breaker Triggered: Repetitive Tool Loop]**\n\n"
+                                            f"The agent repeatedly called `{tname}` with identical arguments without making progress:\n"
+                                            f"```json\n{json.dumps(clean_args, indent=2)}\n```\n"
+                                            f"Execution has been safely paused to prevent runaway token spend. "
+                                            f"All worktree files at `{cwd_dir}` are preserved. Review the work and click 'Resume' or provide new instructions."
+                                        )
+
+                                        if session.issue_number and session.repo:
+                                            try:
+                                                pause_comment = (
+                                                    f"⚠️ **Task Paused: Circuit Breaker Triggered**\n\n"
+                                                    f"### 🛑 Repetitive Tool Loop Detected\n"
+                                                    f"- **Tool**: `{tname}` called {session.consecutive_duplicate_tool_count} consecutive times with identical arguments.\n"
+                                                    f"- **Safeguard**: Execution halted immediately to prevent runaway token consumption.\n"
+                                                    f"- **Worktree**: `{session.worktree_path or cwd_dir}`\n"
+                                                    f"- **Status**: Paused awaiting developer review or resumption."
+                                                )
+                                                comment_res = await post_issue_comment(session.repo, session.issue_number, pause_comment)
+                                                if comment_res and "id" in comment_res:
+                                                    session.seen_comment_ids.append(str(comment_res["id"]))
+                                            except Exception as e:
+                                                logger.warning(f"Could not post circuit breaker comment: {e}")
+
+                                        self._save()
+                                        await self.broadcast("session_updated", session.model_dump())
+                                        return
+
+                                    # 2. CIRCUIT BREAKER: Excessive Consecutive File Reads
+                                    if tname == "view_file":
+                                        session.consecutive_view_file_count += 1
+                                    elif tname in ("replace_file_content", "write_to_file", "multi_replace_file_content", "run_command"):
+                                        session.consecutive_view_file_count = 0
+
+                                    max_reads_threshold = getattr(config, "CIRCUIT_BREAKER_MAX_CONSECUTIVE_READS", 8)
+                                    if session.consecutive_view_file_count >= max_reads_threshold:
+                                        logger.warning(
+                                            f"[Circuit Breaker] Excessive consecutive file reads for session {session_id}: "
+                                            f"{session.consecutive_view_file_count} consecutive view_file calls without code edits or tests."
+                                        )
+                                        session.status = AgentStatus.PAUSED
+                                        session.circuit_breaker_triggered = True
+                                        session.error_message = (
+                                            f"Circuit Breaker Triggered: Excessive consecutive file reads "
+                                            f"({session.consecutive_view_file_count} view_file calls without editing code or running commands)."
+                                        )
+                                        if proc.returncode is None:
+                                            try:
+                                                proc.terminate()
+                                            except Exception:
+                                                pass
+
+                                        await self._append_message(
+                                            session_id,
+                                            MessageRole.SYSTEM,
+                                            f"🛑 **[Circuit Breaker Triggered: Excessive File Re-Reading]**\n\n"
+                                            f"The agent performed {session.consecutive_view_file_count} consecutive `view_file` calls without making code edits or running tests.\n"
+                                            f"Execution has been safely paused to prevent context saturation and token waste. "
+                                            f"Click 'Resume' or provide specific guidance to proceed."
+                                        )
+                                        self._save()
+                                        await self.broadcast("session_updated", session.model_dump())
+                                        return
+
+                                    # 3. TURN BUDGET GUARDRAIL (AGENTS.md Section 2: Max 15 Turns)
+                                    max_turns_limit = getattr(config, "MAX_TURNS_PER_SESSION", 15)
+                                    if session.turn_count >= max_turns_limit:
+                                        logger.warning(
+                                            f"[Turn Budget Guardrail] Session {session_id} reached turn limit ({session.turn_count} / {max_turns_limit}). "
+                                            "Pausing per AGENTS.md budget guardrail."
+                                        )
+                                        session.status = AgentStatus.PAUSED
+                                        session.error_message = f"Turn Budget Limit reached ({session.turn_count} / {max_turns_limit} turns)."
+                                        if proc.returncode is None:
+                                            try:
+                                                proc.terminate()
+                                            except Exception:
+                                                pass
+
+                                        await self._append_message(
+                                            session_id,
+                                            MessageRole.SYSTEM,
+                                            f"⚠️ **[Turn Budget Guardrail Reached]**\n\n"
+                                            f"The agent has reached the maximum budget of **{max_turns_limit} tool execution turns** without completing the task.\n"
+                                            f"Per **AGENTS.md Section 2**, execution is paused to prevent runaway token spend. "
+                                            f"Worktree changes at `{cwd_dir}` are preserved. Review progress and click 'Resume' or provide follow-up instructions."
+                                        )
+
+                                        if session.issue_number and session.repo:
+                                            try:
+                                                pause_comment = (
+                                                    f"⚠️ **Task Paused: Token / Complexity Budget Threshold Reached**\n\n"
+                                                    f"### 📊 Task Insights\n"
+                                                    f"- **Turns Completed**: {session.turn_count} / {max_turns_limit}\n"
+                                                    f"- **Tokens Recorded**: {session.token_count:,} tokens\n"
+                                                    f"- **Worktree**: `{session.worktree_path or cwd_dir}`\n"
+                                                    f"- **Status**: Paused per AGENTS.md Turn Limit Guardrail (Max {max_turns_limit} turns).\n"
+                                                    f"- **Proposed Next Action**: Review work in worktree and approve continuation from Agent Manager UI or add instructions."
+                                                )
+                                                comment_res = await post_issue_comment(session.repo, session.issue_number, pause_comment)
+                                                if comment_res and "id" in comment_res:
+                                                    session.seen_comment_ids.append(str(comment_res["id"]))
+                                            except Exception as e:
+                                                logger.warning(f"Could not post turn budget comment: {e}")
+
+                                        self._save()
+                                        await self.broadcast("session_updated", session.model_dump())
+                                        return
                                 elif sstate == "DONE":
                                     raw_out = tinfo.get("output", "")
                                     out_str = str(raw_out) if raw_out is not None else ""

@@ -56,6 +56,11 @@ CLI_IDLE_TIMEOUT_MINUTES = int(_saved_settings.get("cli_idle_timeout_minutes") o
 MAX_SESSION_TOKENS = int(_saved_settings.get("max_session_tokens") or os.getenv("MAX_SESSION_TOKENS", "150000"))
 COMPACT_COMPLETED_CHAT = _saved_settings.get("compact_completed_chat") if "compact_completed_chat" in _saved_settings else (os.getenv("COMPACT_COMPLETED_CHAT", "true").lower() in ("true", "1", "yes"))
 
+# Circuit Breaker & Turn Budget Guardrails
+MAX_TURNS_PER_SESSION = int(_saved_settings.get("max_turns_per_session") or os.getenv("MAX_TURNS_PER_SESSION", "15"))
+CIRCUIT_BREAKER_DUPLICATE_THRESHOLD = int(_saved_settings.get("circuit_breaker_duplicate_threshold") or os.getenv("CIRCUIT_BREAKER_DUPLICATE_THRESHOLD", "3"))
+CIRCUIT_BREAKER_MAX_CONSECUTIVE_READS = int(_saved_settings.get("circuit_breaker_max_consecutive_reads") or os.getenv("CIRCUIT_BREAKER_MAX_CONSECUTIVE_READS", "8"))
+
 # Multi-stage Workflow Pipeline (Issue #36: dumb model summary -> smart model planning -> dumb model implementation)
 WORKFLOW_PIPELINE_ENABLED = _saved_settings.get("workflow_pipeline_enabled") if "workflow_pipeline_enabled" in _saved_settings else (os.getenv("WORKFLOW_PIPELINE_ENABLED", "false").lower() in ("true", "1", "yes"))
 PIPELINE_SUMMARY_MODEL = _saved_settings.get("pipeline_summary_model") or os.getenv("PIPELINE_SUMMARY_MODEL", "gemini-3.8-flash")

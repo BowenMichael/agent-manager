@@ -65,13 +65,21 @@ To ensure multiple agents or team members never duplicate work:
 
 To ensure tasks remain cost-effective and prevent run-away context/token consumption, the agent must enforce the following guardrail:
 
-### Thresholds
-- **Turn Limit**: If a single task reaches **15 tool execution turns** without completing the implementation.
+### Thresholds & Automated Circuit Breakers
+- **Turn Limit (Enforced)**: If a single task reaches **15 tool execution turns** without completing the implementation, the runner halts execution automatically.
+- **Duplicate Tool Call Circuit Breaker**: If the agent executes the exact same tool with identical arguments **3 consecutive times**, the runner terminates the process immediately to prevent infinite token spend.
+- **Excessive File Reading Circuit Breaker**: If the agent performs **8 consecutive file view operations** without making any code edits or running tests, the runner pauses execution.
 - **Token Budget**: If the session approaches the session token budget limit (default: 150,000 tokens).
-- **Repetitive Loops**: If the conversation encounters repetitive failure loops, unexpected circular dependencies, or major unplanned refactoring.
+
+### ⚡ Mandatory Tool Efficiency Directives (Anti-Loop Protocol)
+To ensure context windows remain clean and prevent repetitive re-reading:
+1. **Search Before Viewing**: Always use `grep_search` to pinpoint the exact function, class, or symbol location before calling `view_file`.
+2. **Mandatory Line Range Slicing**: When calling `view_file`, ALWAYS specify `StartLine` and `EndLine` (maximum 100 lines per call). Never view entire files over 200 lines at once.
+3. **Zero Redundant Re-Reading**: Never call `view_file` on the same file or lines you have already inspected within the active turn. Trust your context window.
+4. **Action-Oriented Exploration**: Limit exploration to 3–4 targeted searches/reads before writing code or running tests.
 
 ### Mandatory Pause Protocol
-When a threshold is reached, the agent **MUST IMMEDIATELY PAUSE** execution on the issue and execute the following:
+When a threshold or circuit breaker is reached, execution is halted automatically:
 
 1. **Post Insights Breakdown** (both as an Issue comment and in the dashboard stream):
    ```markdown
@@ -80,11 +88,11 @@ When a threshold is reached, the agent **MUST IMMEDIATELY PAUSE** execution on t
    ### 📊 Task Insights
    - **Progress Completed**: [Summary of files edited and components built]
    - **Remaining Work**: [Exact items needed to reach acceptance criteria]
-   - **Cost / Complexity Driver**: [Explain why token consumption is high]
-   - **Proposed Next Action**: [Option A: Approve 10 more turns to finish; Option B: Narrow scope; Option C: Human intervention]
+   - **Cost / Complexity Driver**: [Explain why token consumption or turn count is high]
+   - **Proposed Next Action**: [Option A: Approve 15 more turns to finish; Option B: Narrow scope; Option C: Human intervention]
    ```
 2. **Await User Approval**:
-   - The agent MUST NOT take further code modification actions until the user explicitly responds with approval to proceed.
+   - The agent MUST NOT take further code modification actions until the user explicitly responds with approval to proceed via the Agent Manager UI or GitHub comment.
 
 ---
 
