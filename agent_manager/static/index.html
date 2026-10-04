@@ -167,6 +167,8 @@
                 <span class="submeta-item font-mono" id="current-model-tag" style="color: var(--accent-cyan);">gemini-3.8-flash</span>
                 <span class="submeta-divider">•</span>
                 <span class="submeta-item font-mono" id="current-effort-tag" style="color: var(--accent-amber);">effort: high</span>
+                <span class="submeta-divider">•</span>
+                <span class="submeta-item font-mono" id="current-pipeline-tag" style="color: #a78bfa; font-weight: 600;">STAGE: DIRECT</span>
               </div>
             </div>
 
@@ -577,6 +579,75 @@
             <small style="color: var(--text-secondary); display: block; margin-left: 28px; line-height: 1.4; font-size: 0.78rem;">
               When enabled, automatically draws from your Google Antigravity AI credit balance when standard baseline quota is reached to prevent agent interruptions.
             </small>
+          </div>
+
+          <!-- Multi-Stage Workflow Pipeline (Issue #36) -->
+          <div class="form-group" style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px; padding: 14px;">
+            <label style="display: flex; gap: 10px; align-items: center; cursor: pointer; margin-bottom: 6px;">
+              <input type="checkbox" id="check-workflow-pipeline" style="width: 18px; height: 18px; accent-color: #8b5cf6; cursor: pointer;">
+              <span style="font-weight: 700; font-size: 0.9rem; color: #a78bfa;">3-Stage Model Pipeline (Issue #36)</span>
+            </label>
+            <small style="color: var(--text-secondary); display: block; margin-left: 28px; line-height: 1.4; font-size: 0.78rem; margin-bottom: 12px;">
+              Enables staged autonomous task orchestration: <strong>Dumb model</strong> summarizes the issue &rarr; <strong>Smart model</strong> creates a step-by-step plan &rarr; <strong>Dumb model</strong> executes the implementation in the worktree.
+            </small>
+            
+            <div id="pipeline-config-options" style="display: flex; flex-direction: column; gap: 10px; margin-left: 28px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 4px;">1. Summary Model (Fast/Dumb)</label>
+                  <select id="select-pipeline-sum-model" class="form-control" style="font-size: 0.8rem;">
+                    <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+                    <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
+                    <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Summary Effort</label>
+                  <select id="select-pipeline-sum-effort" class="form-control" style="font-size: 0.8rem;">
+                    <option value="low" selected>Low</option>
+                    <option value="medium">Medium</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 4px;">2. Planning Model (Smart/Reasoning)</label>
+                  <select id="select-pipeline-plan-model" class="form-control" style="font-size: 0.8rem;">
+                    <option value="gemini-3.1-pro" selected>Gemini 3.1 Pro</option>
+                    <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+                    <option value="claude-opus-5-5">Claude Opus 5.5</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Planning Effort</label>
+                  <select id="select-pipeline-plan-effort" class="form-control" style="font-size: 0.8rem;">
+                    <option value="high" selected>High</option>
+                    <option value="xhigh">Extra High</option>
+                    <option value="max">Max</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 4px;">3. Implementation Model (Execution)</label>
+                  <select id="select-pipeline-impl-model" class="form-control" style="font-size: 0.8rem;">
+                    <option value="gemini-3.8-flash" selected>Gemini 3.8 Flash</option>
+                    <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
+                    <option value="claude-sonnet-5-5">Claude Sonnet 5.5</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 4px;">Implementation Effort</label>
+                  <select id="select-pipeline-impl-effort" class="form-control" style="font-size: 0.8rem;">
+                    <option value="low" selected>Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Auto-compact completed chats toggle -->

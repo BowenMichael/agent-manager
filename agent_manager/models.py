@@ -30,6 +30,13 @@ class ConversationMessage(BaseModel):
     tool_args: Optional[Dict[str, Any]] = None
     tool_output: Optional[str] = None
 
+class WorkflowStage(str, Enum):
+    DIRECT = "DIRECT"
+    SUMMARIZING = "SUMMARIZING"
+    PLANNING = "PLANNING"
+    IMPLEMENTING = "IMPLEMENTING"
+    COMPLETED = "COMPLETED"
+
 class AgentSessionInfo(BaseModel):
     session_id: str
     repo: str
@@ -67,6 +74,10 @@ class AgentSessionInfo(BaseModel):
     archived_at: Optional[str] = None
     is_compacted: bool = False
     compact_summary: Optional[str] = None
+    workflow_pipeline_enabled: bool = False
+    workflow_stage: WorkflowStage = WorkflowStage.DIRECT
+    pipeline_summary: Optional[str] = None
+    pipeline_plan: Optional[str] = None
 
 
 class SpawnRequest(BaseModel):
@@ -77,6 +88,7 @@ class SpawnRequest(BaseModel):
     worktree_branch: Optional[str] = None
     model: Optional[str] = None
     effort: Optional[str] = None
+    workflow_pipeline_enabled: Optional[bool] = None
 
 class AddContextRequest(BaseModel):
     context: str
@@ -108,3 +120,10 @@ class SettingsUpdateRequest(BaseModel):
     default_repo: Optional[str] = None
     is_server: Optional[bool] = None
     cli_idle_timeout_minutes: Optional[int] = None
+    workflow_pipeline_enabled: Optional[bool] = None
+    pipeline_summary_model: Optional[str] = None
+    pipeline_summary_effort: Optional[str] = None
+    pipeline_planning_model: Optional[str] = None
+    pipeline_planning_effort: Optional[str] = None
+    pipeline_implementation_model: Optional[str] = None
+    pipeline_implementation_effort: Optional[str] = None

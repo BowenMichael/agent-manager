@@ -557,5 +557,91 @@ class TestAgentManager(unittest.TestCase):
         self.assertEqual(t4, "MCP: [github] get_issue")
         self.assertIn("get_issue", d4)
 
+    def test_workflow_pipeline_settings_persistence(self):
+        """Verifies workflow pipeline settings can be updated and retrieved via API."""
+        update_payload = {
+            "workflow_pipeline_enabled": True,
+            "pipeline_summary_model": "gemini-3.8-flash",
+            "pipeline_summary_effort": "low",
+            "pipeline_planning_model": "gemini-3.1-pro",
+            "pipeline_planning_effort": "high",
+            "pipeline_implementation_model": "gemini-3.8-flash",
+            "pipeline_implementation_effort": "low"
+        }
+        res = self.client.post("/api/settings", json=update_payload)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get("workflow_pipeline_enabled"))
+        self.assertEqual(data.get("pipeline_summary_model"), "gemini-3.8-flash")
+        self.assertEqual(data.get("pipeline_planning_model"), "gemini-3.1-pro")
+        self.assertEqual(data.get("pipeline_implementation_model"), "gemini-3.8-flash")
+
+        get_res = self.client.get("/api/settings")
+        self.assertEqual(get_res.status_code, 200)
+        settings = get_res.json()
+        self.assertTrue(settings.get("workflow_pipeline_enabled"))
+        self.assertEqual(settings.get("pipeline_summary_effort"), "low")
+        self.assertEqual(settings.get("pipeline_planning_effort"), "high")
+
+    def test_workflow_pipeline_execution_stages(self):
+        """Verifies that enabling the 3-stage pipeline transitions across SUMMARY -> PLANNING -> IMPLEMENTING."""
+        from agent_manager.models import WorkflowStage
+        from unittest.mock import AsyncMock, patch
+
+        async def run_test():
+            spawn_res = self.client.post("/api/agents/spawn", json={
+                "issue_number": 361,
+                "title": "Pipeline Stage Test",
+                "prompt": "Objective: build pipeline. Criteria: unit tests pass.",
+                "workflow_pipeline_enabled": True
+            })
+            self.assertEqual(spawn_res.status_code, 200)
+            session_data = spawn_res.json()
+            session_id = session_data["session_id"]
+            self.assertTrue(session_data.get("workflow_pipeline_enabled"))
+
+            # Test _run_workflow_pipeline staged execution
+            turns_run = []
+            async def mock_run_cli_turn(sid, prompt, cwd, model, effort):
+                turns_run.append({"model": model, "effort": effort, "prompt": prompt})
+                if "requirements analyst" in prompt:
+                    return "Summary of issue #361 requirements."
+                elif "principal software architect" in prompt:
+                    return "Architecture and execution plan for #361."
+                return "Implementation output."
+
+            with patch.object(self.runner, "_run_cli_turn", side_effect=mock_run_cli_turn):
+                with patch.object(self.runner, "_run_agent_loop", new_callable=AsyncMock) as mock_agent_loop:
+                    await self.runner._run_workflow_pipeline(
+                        session_id=session_id,
+                        task_description="Build pipeline feature",
+                        cwd_dir=".",
+                        issue_num=361,
+                        branch_name="feat/issue-361"
+                    )
+
+                    # Verify 2 CLI turns for Stage 1 (Summary) and Stage 2 (Planning)
+                    self.assertEqual(len(turns_run), 2)
+                    self.assertEqual(turns_run[0]["model"], "gemini-3.8-flash")
+                    self.assertEqual(turns_run[0]["effort"], "low")
+                    self.assertEqual(turns_run[1]["model"], "gemini-3.1-pro")
+                    self.assertEqual(turns_run[1]["effort"], "high")
+
+                    # Verify Stage 3 was triggered via _run_agent_loop
+                    mock_agent_loop.assert_awaited_once()
+                    call_args = mock_agent_loop.call_args[0]
+                    self.assertEqual(call_args[0], session_id)
+                    self.assertIn("Approved Implementation Plan", call_args[1])
+
+                    # Verify deliverables persisted on session
+                    session = self.runner.get_session(session_id)
+                    self.assertEqual(session.pipeline_summary, "Summary of issue #361 requirements.")
+                    self.assertEqual(session.pipeline_plan, "Architecture and execution plan for #361.")
+                    self.assertEqual(session.workflow_stage, WorkflowStage.IMPLEMENTING)
+
+            self.client.post(f"/api/agents/{session_id}/stop")
+
+        asyncio.run(run_test())
+
 if __name__ == "__main__":
     unittest.main()

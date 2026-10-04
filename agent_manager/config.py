@@ -56,6 +56,15 @@ CLI_IDLE_TIMEOUT_MINUTES = int(_saved_settings.get("cli_idle_timeout_minutes") o
 MAX_SESSION_TOKENS = int(_saved_settings.get("max_session_tokens") or os.getenv("MAX_SESSION_TOKENS", "150000"))
 COMPACT_COMPLETED_CHAT = _saved_settings.get("compact_completed_chat") if "compact_completed_chat" in _saved_settings else (os.getenv("COMPACT_COMPLETED_CHAT", "true").lower() in ("true", "1", "yes"))
 
+# Multi-stage Workflow Pipeline (Issue #36: dumb model summary -> smart model planning -> dumb model implementation)
+WORKFLOW_PIPELINE_ENABLED = _saved_settings.get("workflow_pipeline_enabled") if "workflow_pipeline_enabled" in _saved_settings else (os.getenv("WORKFLOW_PIPELINE_ENABLED", "false").lower() in ("true", "1", "yes"))
+PIPELINE_SUMMARY_MODEL = _saved_settings.get("pipeline_summary_model") or os.getenv("PIPELINE_SUMMARY_MODEL", "gemini-3.8-flash")
+PIPELINE_SUMMARY_EFFORT = (_saved_settings.get("pipeline_summary_effort") or os.getenv("PIPELINE_SUMMARY_EFFORT", "low")).lower()
+PIPELINE_PLANNING_MODEL = _saved_settings.get("pipeline_planning_model") or os.getenv("PIPELINE_PLANNING_MODEL", "gemini-3.1-pro")
+PIPELINE_PLANNING_EFFORT = (_saved_settings.get("pipeline_planning_effort") or os.getenv("PIPELINE_PLANNING_EFFORT", "high")).lower()
+PIPELINE_IMPLEMENTATION_MODEL = _saved_settings.get("pipeline_implementation_model") or os.getenv("PIPELINE_IMPLEMENTATION_MODEL", "gemini-3.8-flash")
+PIPELINE_IMPLEMENTATION_EFFORT = (_saved_settings.get("pipeline_implementation_effort") or os.getenv("PIPELINE_IMPLEMENTATION_EFFORT", "low")).lower()
+
 AVAILABLE_MODELS = [
     {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Recommended)", "type": "Antigravity Subscription"},
     {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash", "type": "Antigravity Subscription"},

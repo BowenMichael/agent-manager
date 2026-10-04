@@ -98,6 +98,13 @@ async def get_settings():
         "compact_completed_chat": getattr(config, "COMPACT_COMPLETED_CHAT", True),
         "is_server": getattr(config, "IS_SERVER", False),
         "cli_idle_timeout_minutes": getattr(config, "CLI_IDLE_TIMEOUT_MINUTES", 30),
+        "workflow_pipeline_enabled": getattr(config, "WORKFLOW_PIPELINE_ENABLED", False),
+        "pipeline_summary_model": getattr(config, "PIPELINE_SUMMARY_MODEL", "gemini-3.8-flash"),
+        "pipeline_summary_effort": getattr(config, "PIPELINE_SUMMARY_EFFORT", "low"),
+        "pipeline_planning_model": getattr(config, "PIPELINE_PLANNING_MODEL", "gemini-3.1-pro"),
+        "pipeline_planning_effort": getattr(config, "PIPELINE_PLANNING_EFFORT", "high"),
+        "pipeline_implementation_model": getattr(config, "PIPELINE_IMPLEMENTATION_MODEL", "gemini-3.8-flash"),
+        "pipeline_implementation_effort": getattr(config, "PIPELINE_IMPLEMENTATION_EFFORT", "low"),
         "quota_status": quota_status
     }
 
@@ -197,6 +204,54 @@ async def update_settings(req: SettingsUpdateRequest):
         set_env("CLI_IDLE_TIMEOUT_MINUTES", str(timeout_val))
         current_persisted["cli_idle_timeout_minutes"] = timeout_val
 
+    if req.workflow_pipeline_enabled is not None:
+        config.WORKFLOW_PIPELINE_ENABLED = bool(req.workflow_pipeline_enabled)
+        os.environ["WORKFLOW_PIPELINE_ENABLED"] = str(req.workflow_pipeline_enabled).lower()
+        set_env("WORKFLOW_PIPELINE_ENABLED", str(req.workflow_pipeline_enabled).lower())
+        current_persisted["workflow_pipeline_enabled"] = bool(req.workflow_pipeline_enabled)
+
+    if req.pipeline_summary_model:
+        val = req.pipeline_summary_model.strip()
+        config.PIPELINE_SUMMARY_MODEL = val
+        os.environ["PIPELINE_SUMMARY_MODEL"] = val
+        set_env("PIPELINE_SUMMARY_MODEL", val)
+        current_persisted["pipeline_summary_model"] = val
+
+    if req.pipeline_summary_effort:
+        val = req.pipeline_summary_effort.strip().lower()
+        config.PIPELINE_SUMMARY_EFFORT = val
+        os.environ["PIPELINE_SUMMARY_EFFORT"] = val
+        set_env("PIPELINE_SUMMARY_EFFORT", val)
+        current_persisted["pipeline_summary_effort"] = val
+
+    if req.pipeline_planning_model:
+        val = req.pipeline_planning_model.strip()
+        config.PIPELINE_PLANNING_MODEL = val
+        os.environ["PIPELINE_PLANNING_MODEL"] = val
+        set_env("PIPELINE_PLANNING_MODEL", val)
+        current_persisted["pipeline_planning_model"] = val
+
+    if req.pipeline_planning_effort:
+        val = req.pipeline_planning_effort.strip().lower()
+        config.PIPELINE_PLANNING_EFFORT = val
+        os.environ["PIPELINE_PLANNING_EFFORT"] = val
+        set_env("PIPELINE_PLANNING_EFFORT", val)
+        current_persisted["pipeline_planning_effort"] = val
+
+    if req.pipeline_implementation_model:
+        val = req.pipeline_implementation_model.strip()
+        config.PIPELINE_IMPLEMENTATION_MODEL = val
+        os.environ["PIPELINE_IMPLEMENTATION_MODEL"] = val
+        set_env("PIPELINE_IMPLEMENTATION_MODEL", val)
+        current_persisted["pipeline_implementation_model"] = val
+
+    if req.pipeline_implementation_effort:
+        val = req.pipeline_implementation_effort.strip().lower()
+        config.PIPELINE_IMPLEMENTATION_EFFORT = val
+        os.environ["PIPELINE_IMPLEMENTATION_EFFORT"] = val
+        set_env("PIPELINE_IMPLEMENTATION_EFFORT", val)
+        current_persisted["pipeline_implementation_effort"] = val
+
     try:
         env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception as e:
@@ -214,7 +269,14 @@ async def update_settings(req: SettingsUpdateRequest):
         "agy_mode": config.AGY_MODE,
         "default_repo": config.DEFAULT_REPO,
         "is_server": config.IS_SERVER,
-        "cli_idle_timeout_minutes": config.CLI_IDLE_TIMEOUT_MINUTES
+        "cli_idle_timeout_minutes": config.CLI_IDLE_TIMEOUT_MINUTES,
+        "workflow_pipeline_enabled": config.WORKFLOW_PIPELINE_ENABLED,
+        "pipeline_summary_model": config.PIPELINE_SUMMARY_MODEL,
+        "pipeline_summary_effort": config.PIPELINE_SUMMARY_EFFORT,
+        "pipeline_planning_model": config.PIPELINE_PLANNING_MODEL,
+        "pipeline_planning_effort": config.PIPELINE_PLANNING_EFFORT,
+        "pipeline_implementation_model": config.PIPELINE_IMPLEMENTATION_MODEL,
+        "pipeline_implementation_effort": config.PIPELINE_IMPLEMENTATION_EFFORT
     }
     await runner.broadcast("settings_updated", result)
     return result
