@@ -21,6 +21,7 @@ from agent_manager.models import (
 from agent_manager.storage import save_sessions, load_sessions
 from agent_manager.github import post_issue_comment
 from agent_manager.utils.command_formatter import format_command_output
+from agent_manager.utils.workspace import find_local_workspace
 
 logger = logging.getLogger("agent_manager.runner")
 
@@ -207,18 +208,7 @@ class AgentRunnerManager:
 
     def _setup_worktree(self, repo: str, issue_number: int) -> tuple[Optional[str], Optional[str]]:
         """Sets up isolated git worktree for the issue to prevent branch conflicts."""
-        repo_name = repo.split("/")[-1]
-        candidate_dirs = [
-            WORKSPACE_BASE / repo_name,
-            WORKSPACE_BASE / "F1 Front End" / repo_name,
-            Path("e:/~Michael Bowen/Projects/F1 Front End/f1-frontend"),
-            Path.cwd()
-        ]
-        repo_dir = None
-        for cand in candidate_dirs:
-            if cand.exists() and (cand / ".git").exists():
-                repo_dir = cand
-                break
+        repo_dir = find_local_workspace(repo)
 
         if not repo_dir:
             logger.warning(f"No git repository found for {repo}. Operating without isolated worktree.")
