@@ -1,4 +1,5 @@
 import asyncio
+import json
 import subprocess
 from typing import Optional
 import logging
@@ -19,7 +20,7 @@ from agent_manager.models import (
 )
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.storage import save_settings, load_settings
-from agent_manager.webhooks import router as webhooks_router
+from agent_manager.webhooks import router as webhooks_router, process_github_event
 from agent_manager.poller import LocalGitWatcher
 
 
@@ -363,6 +364,26 @@ async def simulate_webhook(req: SimulateWebhookRequest):
         )
         session = await runner.spawn_agent(spawn_req)
         return {"status": "ok", "simulated": True, "session": session}
+
+    elif req.event_type == "issue_comment":
+        mock_payload = {
+            "action": req.action or "created",
+            "issue": {
+                "number": req.issue_number,
+                "title": req.issue_title,
+                "body": req.issue_body,
+            },
+            "comment": {
+                "id": req.comment_id or 12345678,
+                "body": req.comment_body or "Simulated feedback comment on issue.",
+                "user": {"login": req.commenter or "reviewer"}
+            },
+            "repository": {
+                "full_name": req.repo
+            }
+        }
+        result = await process_github_event("issue_comment", mock_payload)
+        return {"status": "ok", "simulated": True, "result": result}
 
     raise HTTPException(status_code=400, detail=f"Unsupported simulation event type: {req.event_type}")
 

@@ -18,6 +18,7 @@ from agent_manager.models import (
     MessageRole, SpawnRequest
 )
 from agent_manager.storage import save_sessions, load_sessions
+from agent_manager.github import post_issue_comment
 
 logger = logging.getLogger("agent_manager.runner")
 
@@ -728,6 +729,20 @@ class AgentRunnerManager:
                             )
                             self._save()
                             await self.broadcast("session_updated", session.model_dump())
+
+                            # Automatically post agent response as a comment on the GitHub issue
+                            if session.issue_number and session.repo:
+                                try:
+                                    comment_content = (
+                                        f"🤖 **Agent Update**\n\n"
+                                        f"{final_resp.strip()}"
+                                    )
+                                    comment_res = await post_issue_comment(session.repo, session.issue_number, comment_content)
+                                    if comment_res and "id" in comment_res:
+                                        session.seen_comment_ids.append(str(comment_res["id"]))
+                                        self._save()
+                                except Exception as post_err:
+                                    logger.error(f"Failed to post agent completion comment to GitHub: {post_err}")
                         elif ev == "error" or event_obj.get("error"):
                             err_txt = json.dumps(event_obj.get("error", event_obj))
                             if _looks_like_quota_error(err_txt):

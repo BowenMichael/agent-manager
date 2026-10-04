@@ -92,6 +92,9 @@ class SimulateWebhookRequest(BaseModel):
     issue_title: str = "Milestone 1: Historical Calendar & Session Picker UI"
     issue_body: str = "Implement GETMeetings OpenF1 middleware integration, Season and Round dropdown selectors, and Grand Prix session card grid."
     repo: str = "BowenMichael/f1-frontend"
+    comment_body: Optional[str] = None
+    comment_id: Optional[str] = None
+    commenter: Optional[str] = "reviewer"
 
 class SettingsUpdateRequest(BaseModel):
     default_model: Optional[str] = None

@@ -438,24 +438,29 @@
             <label>Event Type</label>
             <select id="sim-event-type" class="form-control">
               <option value="issues">issues (labeled with agent:ready)</option>
+              <option value="issue_comment">issue_comment (comment added on issue)</option>
             </select>
           </div>
           <div class="form-group">
             <label>Issue Number</label>
             <input type="number" id="sim-issue-num" class="form-control" value="6">
           </div>
-          <div class="form-group">
+          <div class="form-group" id="sim-group-title">
             <label>Issue Title</label>
             <input type="text" id="sim-issue-title" class="form-control" value="Milestone 1: Historical Calendar & Session Picker UI">
           </div>
-          <div class="form-group">
+          <div class="form-group" id="sim-group-body">
             <label>Issue Description</label>
-            <textarea id="sim-issue-body" class="form-control" rows="4">Implement GETMeetings OpenF1 middleware integration, Season and Round dropdown selectors, and Grand Prix session card grid with responsive layout.</textarea>
+            <textarea id="sim-issue-body" class="form-control" rows="3">Implement GETMeetings OpenF1 middleware integration, Season and Round dropdown selectors, and Grand Prix session card grid with responsive layout.</textarea>
+          </div>
+          <div class="form-group hidden" id="sim-group-comment">
+            <label>Comment Body</label>
+            <textarea id="sim-comment-body" class="form-control" rows="3" placeholder="e.g. Please add error handling for invalid round parameters.">Please add unit tests and verify the comment response.</textarea>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" id="btn-cancel-simulate">Cancel</button>
-          <button class="btn btn-primary" id="btn-submit-simulate">Simulate & Spawn Agent</button>
+          <button class="btn btn-primary" id="btn-submit-simulate">Simulate Webhook</button>
         </div>
       </div>
     </div>
