@@ -20,6 +20,7 @@ from agent_manager.models import (
 )
 from agent_manager.storage import save_sessions, load_sessions
 from agent_manager.github import post_issue_comment
+from agent_manager.utils.command_formatter import format_command_output
 
 logger = logging.getLogger("agent_manager.runner")
 
@@ -1263,15 +1264,16 @@ class AgentRunnerManager:
                                         return
                                 elif sstate == "DONE":
                                     raw_out = tinfo.get("output", "")
-                                    out_str = str(raw_out) if raw_out is not None else ""
-                                    # Provide informative terminal log summary
-                                    if out_str.strip() and out_str.strip() != "Done":
-                                        result_content = out_str
+                                    tparams = tinfo.get("parameters") or {}
+                                    if tname == "run_command":
+                                        result_content = format_command_output(tname, raw_out, tparams)
                                     else:
-                                        # When output is empty or generic 'Done', give descriptive completion note
-                                        tparams = tinfo.get("parameters") or {}
-                                        title_text, _ = format_tool_display(tname, tparams)
-                                        result_content = f"Completed: {title_text}"
+                                        out_str = str(raw_out) if raw_out is not None else ""
+                                        if out_str.strip() and out_str.strip() != "Done":
+                                            result_content = out_str
+                                        else:
+                                            title_text, _ = format_tool_display(tname, tparams)
+                                            result_content = f"Completed: {title_text}"
                                     await self._append_message(
                                         session_id,
                                         MessageRole.TOOL_RESULT,

@@ -43,6 +43,19 @@ document.addEventListener('DOMContentLoaded', () => {
     await fetch(`/api/agents/${activeSessionId}/resume`, { method: 'POST' });
     document.title = 'Agent Manager';
   });
+
+  // Global listener for interactive file viewer badges
+  document.addEventListener('click', (e) => {
+    const badge = e.target.closest('.file-clickable-badge');
+    if (badge) {
+      const filePath = badge.getAttribute('data-filepath');
+      const startLine = badge.getAttribute('data-startline');
+      const endLine = badge.getAttribute('data-endline');
+      if (filePath && activeSessionId && typeof window.openFileViewer === 'function') {
+        window.openFileViewer(activeSessionId, filePath, { startLine, endLine });
+      }
+    }
+  });
 });
 
 // Agent Activity & Stall Tracking
@@ -564,13 +577,18 @@ function renderMessageItem(msg) {
     const tName = msg.tool_name || 'Terminal';
     const isGenericDone = !msg.content || msg.content.trim() === 'Done';
     const headerLabel = isGenericDone ? `AGY TERMINAL: ${escapeHtml(tName).toUpperCase()}` : `AGY TERMINAL LOG: ${escapeHtml(tName).toUpperCase()}`;
-    bubble.innerHTML = `
-      <div class="terminal-header">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-        <span>${headerLabel}</span>
-      </div>
-      <div class="terminal-body">${escapeHtml(msg.content)}</div>
-    `;
+    if (typeof window.createCommandOutputUI === 'function') {
+      const outputCard = window.createCommandOutputUI(msg.content, headerLabel);
+      bubble.appendChild(outputCard);
+    } else {
+      bubble.innerHTML = `
+        <div class="terminal-header">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+          <span>${headerLabel}</span>
+        </div>
+        <div class="terminal-body">${escapeHtml(msg.content)}</div>
+      `;
+    }
   } else if (msg.role === 'TOOL_CALL') {
     bubble.className = 'msg-tool';
     const tName = msg.tool_name || 'tool';
@@ -582,15 +600,17 @@ function renderMessageItem(msg) {
     if (tName === 'view_file') {
       const p = args.AbsolutePath || args.path || '';
       const base = p.split(/[\\/]/).pop() || '';
-      targetBadge = base ? `<span class="tool-tag-file">📄 ${escapeHtml(base)}</span>` : '';
-      const lineRange = (args.StartLine && args.EndLine) ? ` (lines ${args.StartLine}-${args.EndLine})` : '';
+      const startLine = args.StartLine || '';
+      const endLine = args.EndLine || '';
+      targetBadge = base ? `<span class="tool-tag-file file-clickable-badge" data-filepath="${escapeHtml(p)}" data-startline="${escapeHtml(String(startLine))}" data-endline="${escapeHtml(String(endLine))}" title="Click to view file in interactive viewer">📄 ${escapeHtml(base)}</span>` : '';
+      const lineRange = (startLine && endLine) ? ` (lines ${startLine}-${endLine})` : '';
       const action = args.toolAction || args.toolSummary || '';
       actionDesc = action ? `${action}: ${p}${lineRange}` : `${p}${lineRange}`;
     } else if (tName === 'replace_file_content' || tName === 'write_to_file' || tName === 'multi_replace_file_content') {
       const p = args.TargetFile || args.path || '';
       const base = p.split(/[\\/]/).pop() || '';
       const icon = tName === 'write_to_file' ? '📝 Create' : '✏️ Edit';
-      targetBadge = base ? `<span class="tool-tag-file">${icon}: ${escapeHtml(base)}</span>` : '';
+      targetBadge = base ? `<span class="tool-tag-file file-clickable-badge" data-filepath="${escapeHtml(p)}" title="Click to view file in interactive viewer">${icon}: ${escapeHtml(base)}</span>` : '';
       const instr = args.Instruction || args.Description || args.toolAction || args.toolSummary || '';
       actionDesc = instr ? `${p} - ${instr}` : p;
     } else if (tName === 'run_command') {
@@ -617,6 +637,17 @@ function renderMessageItem(msg) {
       </div>
       <div class="tool-args">${bodyContent}</div>
     `;
+
+    // Render interactive visual diff for file edit/create tools
+    if (typeof window.createDiffViewerUI === 'function') {
+      if (tName === 'replace_file_content' && (args.TargetContent || args.ReplacementContent)) {
+        const diffBlock = window.createDiffViewerUI(args.TargetContent || '', args.ReplacementContent || '');
+        bubble.appendChild(diffBlock);
+      } else if (tName === 'write_to_file' && args.CodeContent) {
+        const diffBlock = window.createDiffViewerUI('', args.CodeContent || '');
+        bubble.appendChild(diffBlock);
+      }
+    }
   } else if (msg.role === 'SYSTEM') {
     if (msg.content && msg.content.includes('Chat Compacted & Compressed')) {
       bubble.className = 'msg-bubble msg-compacted';
