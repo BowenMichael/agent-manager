@@ -233,7 +233,10 @@ function handleWsMessage(msg) {
       }
       if (activeSessionId === session_id) {
         finalizeThoughtBubble();
-        currentStreamingBubble = null;
+        if (currentStreamingBubble) {
+          currentStreamingBubble.remove();
+          currentStreamingBubble = null;
+        }
         renderMessageItem(message);
         scrollToBottom();
       }
@@ -841,7 +844,10 @@ function escapeHtml(str) {
 
 function formatContent(str) {
   if (!str) return '';
-  // Basic markdown-like line break and code escaping
+  if (typeof window.renderMarkdown === 'function') {
+    return window.renderMarkdown(str);
+  }
+  // Basic markdown-like line break and code escaping fallback
   return escapeHtml(str).replace(/\n/g, '<br>');
 }
 
