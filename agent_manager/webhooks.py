@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Request, Header, HTTPException, status
 
 from agent_manager.config import GITHUB_WEBHOOK_SECRET, DEFAULT_REPO
-from agent_manager.models import SpawnRequest
+from agent_manager.models import SpawnRequest, AgentStatus
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.poller import LocalGitWatcher
 from agent_manager.formatters.comments import is_agent_comment
@@ -65,6 +65,15 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
             )
             session = await runner.spawn_agent(req)
             return {"status": "ok", "action": "agent_spawned", "session_id": session.session_id}
+
+        elif action == "closed":
+            watcher = LocalGitWatcher()
+            if issue_number:
+                await watcher.update_issue_status(repo, issue_number, "done")
+            for s in runner.list_sessions():
+                if s.repo == repo and s.issue_number == issue_number and s.status != AgentStatus.COMPLETED:
+                    await runner.complete_agent(s.session_id, reason=f"Issue #{issue_number} closed on GitHub")
+            return {"status": "ok", "action": "issue_closed", "issue_number": issue_number}
 
     # 2. Handling Project V2 Item Status Updates (Ready for Agent)
     elif event == "projects_v2_item":
@@ -145,7 +154,7 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
                         "board_status": "in_progress"
                     }
 
-    # 4. Handling Pull Request Events for Auto-Merge
+    # 4. Handling Pull Request Events for Auto-Merge & Completion
     elif event == "pull_request":
         from agent_manager.config import AUTO_MERGE_ENABLED
         from agent_manager.github import merge_pull_request
@@ -154,14 +163,23 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
         pr = payload.get("pull_request", {})
         repo = payload.get("repository", {}).get("full_name", DEFAULT_REPO)
         pr_number = pr.get("number")
+        is_merged = pr.get("merged", False)
+        branch = pr.get("head", {}).get("ref")
 
         if AUTO_MERGE_ENABLED and action in ["opened", "reopened", "synchronize"]:
             logger.info(f"Auto-merging PR #{pr_number} in {repo} as requested.")
             res = await merge_pull_request(repo, pr_number)
             if res:
-                return {"status": "ok", "action": "pr_merged", "pr_number": pr_number}
-            else:
-                return {"status": "failed", "action": "pr_merge_failed"}
+                is_merged = True
+
+        if is_merged:
+            watcher = LocalGitWatcher()
+            for s in runner.list_sessions():
+                if s.repo == repo and (s.git_branch == branch or (s.issue_number and f"issue-{s.issue_number}" in (branch or ""))):
+                    if s.issue_number:
+                        await watcher.update_issue_status(repo, s.issue_number, "done")
+                    await runner.complete_agent(s.session_id, reason=f"PR #{pr_number} merged")
+            return {"status": "ok", "action": "pr_merged", "pr_number": pr_number}
 
     return {"status": "ignored", "event": event, "action": payload.get("action")}
 

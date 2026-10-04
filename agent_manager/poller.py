@@ -220,6 +220,7 @@ class LocalGitWatcher:
                       number
                       title
                       body
+                      state
                       updatedAt
                       comments(last: 10) {
                         nodes {
@@ -273,18 +274,22 @@ class LocalGitWatcher:
                 issue_num = content["number"]
                 title = content["title"]
                 body = content.get("body") or ""
+                issue_state = content.get("state", "OPEN")
                 repo = content.get("repository", {}).get("nameWithOwner", DEFAULT_REPO)
                 comments = content.get("comments", {}).get("nodes", [])
                 issue_key = f"{repo}#{issue_num}"
                 self.item_id_map[issue_key] = item["id"]
                 self.item_project_map[item["id"]] = project_id
 
-                # 1. LIFECYCLE: Completed only when manually moved to Done
-                if status_name == STATUS_NAMES["done"]:
+                # 1. LIFECYCLE: Completed if issue closed on GitHub or card moved to Done
+                if issue_state == "CLOSED" or status_name == STATUS_NAMES["done"]:
+                    if issue_state == "CLOSED" and status_name != STATUS_NAMES["done"]:
+                        await self.update_item_status(item["id"], "done")
+                        logger.info("Issue #%s detected as CLOSED on GitHub. Moved card to '✅ Done' on Project Board.", issue_num)
                     for s in self.runner.list_sessions():
                         if s.issue_number == issue_num and s.repo == repo and s.status != AgentStatus.COMPLETED:
-                            logger.info("Issue #%s detected in '✅ Done'. Formally completing and archiving session %s", issue_num, s.session_id)
-                            await self.runner.complete_agent(s.session_id, reason="Issue moved to 'Done' on GitHub Project Board")
+                            logger.info("Issue #%s detected as closed/done. Formally completing and archiving session %s", issue_num, s.session_id)
+                            await self.runner.complete_agent(s.session_id, reason="Issue closed/merged on GitHub")
                     self.active_issues.discard(issue_key)
                     continue
 

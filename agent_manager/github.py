@@ -101,7 +101,33 @@ async def find_pr_for_branch(repo: str, branch: str) -> Optional[int]:
             return None
     except Exception as e:
         logger.exception(f"Exception finding PR for {repo}:{branch}: {e}")
+async def find_merged_pr_for_branch(repo: str, branch: str) -> Optional[int]:
+    """Finds a merged pull request for the given branch."""
+    if not GITHUB_PERSONAL_ACCESS_TOKEN:
         return None
+
+    owner = repo.split('/')[0] if '/' in repo else repo
+    url = f"https://api.github.com/repos/{repo}/pulls?state=closed&head={owner}:{branch}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AgentManagerLocal/1.0"
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                for pr in data:
+                    if pr.get("merged_at"):
+                        return pr["number"]
+            return None
+    except Exception as e:
+        logger.exception(f"Exception finding merged PR for {repo}:{branch}: {e}")
+        return None
+
 
 async def get_issue(repo: str, issue_number: int) -> Optional[dict]:
     """Retrieves GitHub issue details."""
