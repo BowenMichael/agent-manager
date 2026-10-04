@@ -23,7 +23,7 @@ BOARD_QUERY = """
 query($projectId: ID!) {
   node(id: $projectId) {
     ... on ProjectV2 {
-      items(first: 30) {
+      items(first: 100) {
         nodes {
           id
           fieldValues(first: 10) {
@@ -118,17 +118,21 @@ class LocalGitWatcher:
         return await self.client.update_item_status(item_id, status_key, pid)
 
     async def update_issue_status(self, repo: str, issue_number: int, status_key: str) -> bool:
-        key = f"{repo}#{issue_number}"
-        item_id = self.item_id_map.get(key)
+        keys_to_try = [
+            f"{repo}#{issue_number}".lower(),
+            f"{repo.split('/')[-1]}#{issue_number}".lower(),
+            str(issue_number)
+        ]
+        item_id = next((self.item_id_map.get(k) for k in keys_to_try if self.item_id_map.get(k)), None)
         if not item_id:
             for b in PROJECT_BOARD_IDS:
                 await self._check_project_board(b)
-                if key in self.item_id_map:
-                    item_id = self.item_id_map[key]
+                item_id = next((self.item_id_map.get(k) for k in keys_to_try if self.item_id_map.get(k)), None)
+                if item_id:
                     break
         if item_id:
             return await self.update_item_status(item_id, status_key)
-        logger.warning("Could not find project board item for %s", key)
+        logger.warning("Could not find project board item for %s#%s", repo, issue_number)
         return False
 
     async def _check_project_board(self, project_id: str = PROJECT_BOARD_ID):
@@ -166,10 +170,12 @@ class LocalGitWatcher:
                 title = content["title"]
                 body = content.get("body") or ""
                 issue_state = content.get("state", "OPEN")
-                repo = content.get("repository", {}).get("nameWithOwner", DEFAULT_REPO)
-                comments = content.get("comments", {}).get("nodes", [])
+                repo = (content.get("repository") or {}).get("nameWithOwner", DEFAULT_REPO)
+                comments = (content.get("comments") or {}).get("nodes", [])
                 issue_key = f"{repo}#{issue_num}"
                 self.item_id_map[issue_key] = item["id"]
+                self.item_id_map[issue_key.lower()] = item["id"]
+                self.item_id_map[f"{repo.split('/')[-1]}#{issue_num}".lower()] = item["id"]
                 self.item_project_map[item["id"]] = project_id
 
                 if issue_state == "CLOSED" or status_name == STATUS_NAMES["done"]:
