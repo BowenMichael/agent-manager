@@ -28,7 +28,7 @@ def build_interpretation_prompt(title: str, body: Optional[str], issue_num: int)
         f"Please formulate a comprehensive, structured technical elaboration for this task:\n"
         f"1. **Agent Interpretation & Inferred Scope**: Explain what this task entails and the intended user/system outcome.\n"
         f"2. **Detailed Requirements Breakdown**: Expand into concrete functional requirements.\n"
-        f"3. **Proposed Acceptance Criteria**: Provide clear checkbox criteria (`- [ ] ...`) for verification.\n"
+        f"3. **Proposed Acceptance Criteria**: Provide clear checkbox criteria (`- [ ] ...`) for verification (always include a criterion to update `CHANGELOG.md` under [Unreleased]).\n"
         f"4. **Technical Boundaries & Constraints**: Note any relevant modules, conventions, or constraints.\n\n"
         f"IMPORTANT: You must explicitly designate this elaboration as an **Agent Interpretation** "
         f"so human maintainers understand this represents inferred requirements."

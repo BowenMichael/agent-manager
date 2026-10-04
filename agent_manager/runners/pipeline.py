@@ -87,7 +87,8 @@ async def run_workflow_pipeline(manager, session_id: str, task_description: str,
         f"1. **Architectural Overview**: Conceptual approach, component interactions, and key design decisions.\n"
         f"2. **Target Files & Modular Breakdown**: Exact files to create or modify. STRICT ANTI-MONOLITH RULE: Keep all files under 250 lines; decompose into dedicated modular files (`models/`, `services/`, `components/`, `utils/`).\n"
         f"3. **Step-by-Step Implementation Guide**: Clear, ordered instructions specifying WHAT each component must accomplish without writing full code blocks.\n"
-        f"4. **Verification & Testing Criteria**: Expected behavior, test commands to run, and verification checklist (with command log suppression)."
+        f"4. **Verification & Testing Criteria**: Expected behavior, test commands to run, and verification checklist (with command log suppression).\n"
+        f"5. **Documentation & Changelog**: Specify updating `CHANGELOG.md` with new entries under `[Unreleased]` linked to Issue #{issue_num} (initialize file if missing)."
     )
     plan_result = await manager._run_cli_turn(session_id, planning_prompt, cwd_dir, plan_model, plan_effort)
     session.pipeline_plan = plan_result or "Plan formulated."
@@ -121,7 +122,7 @@ async def run_workflow_pipeline(manager, session_id: str, task_description: str,
         f"### Approved Implementation Plan:\n{session.pipeline_plan}\n\n"
         f"### Issue Context & Summary:\n{session.pipeline_summary}\n\n"
         f"Execute the steps in the plan now. Modify the required files, run unit tests to verify, and summarize your completed work.\n"
-        f"Follow AGENTS.md conventions."
+        f"Follow AGENTS.md conventions, and update CHANGELOG.md in the repo root before concluding or opening a PR."
     )
 
     await manager._run_agent_loop(session_id, implementation_prompt, cwd_dir, is_continuation=True)

@@ -148,3 +148,28 @@ To prevent LLM context saturation, token bloat, and self-attention repetition lo
 4. **Architectural Planning Stage Requirement**:
    - In Stage 2 (Architecture Planning), the planner model MUST design a modular file structure with explicit file paths rather than planning additions into a single monolithic file.
 
+---
+
+## 6. 📝 Mandatory CHANGELOG.md Maintenance
+
+To maintain clear auditability, release tracking, and project evolution across autonomous agent runs:
+
+1. **Mandatory CHANGELOG Update**:
+   - Every issue or task implemented by an agent **MUST update `CHANGELOG.md`** in the repository root before submitting work for review (`🔍 In Review`) or opening a Pull Request.
+   - If `CHANGELOG.md` does not exist in the repository root, the agent **MUST initialize it** following standard [Keep a Changelog](https://keepachangelog.com/) guidelines.
+2. **Standard Section & Categories**:
+   - Always append changes under an `## [Unreleased]` section at the top of the file (or under the active version release section).
+   - Categorize all bullet points using standard subheadings:
+     - `### Added` for new features or user-facing capabilities.
+     - `### Changed` for changes in existing functionality or workflows.
+     - `### Deprecated` for soon-to-be removed features.
+     - `### Removed` for now-removed features.
+     - `### Fixed` for any bug fixes.
+     - `### Security` for security fixes or vulnerability mitigations.
+     - `### Performance` for performance optimizations.
+3. **Entry Format Requirements**:
+   - Each entry must be concise and descriptive: explain *what* changed and *why*.
+   - Reference the GitHub issue number (e.g., `(#<issue-number>)`) or Pull Request at the end of each bullet point.
+4. **Verification & Checklist**:
+   - In the PR description and final completion comment on GitHub, the agent must explicitly confirm that `CHANGELOG.md` has been updated with the change entries.
+

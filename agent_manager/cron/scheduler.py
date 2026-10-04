@@ -29,12 +29,38 @@ class ProjectBacklogDispatcher:
         return cls._instance
 
     def _init_dispatcher(self):
+        from agent_manager import config
         self.watcher = LocalGitWatcher()
         self.is_running = False
+        self.is_paused = getattr(config, "CRON_PAUSED", False)
         self._task: Optional[asyncio.Task] = None
         self.last_run_at: Optional[str] = None
         self.next_run_at: Optional[str] = None
         self.dispatch_history: List[Dict[str, Any]] = []
+
+    def pause(self):
+        self.is_paused = True
+        logger.info("[Cron Dispatcher] Paused by user/system request.")
+        self._persist_pause_state(True)
+
+    def resume(self):
+        self.is_paused = False
+        logger.info("[Cron Dispatcher] Resumed.")
+        self._persist_pause_state(False)
+
+    def _persist_pause_state(self, paused: bool):
+        try:
+            import json
+            from agent_manager.config import SETTINGS_FILE
+            settings = {}
+            if SETTINGS_FILE.exists():
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    settings = json.load(f) or {}
+            settings["cron_paused"] = paused
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Could not persist cron_paused setting: {e}")
 
     async def check_and_update_agent_manager(self) -> Dict[str, Any]:
         return await check_and_update_agent_manager()
@@ -48,6 +74,10 @@ class ProjectBacklogDispatcher:
         4. If a project has no active work in progress, selects and promotes one issue from its backlog.
         5. Projects with active work are skipped without blocking idle projects.
         """
+        if self.is_paused:
+            logger.info("[Cron Dispatcher] Skipping evaluation: Cron scheduler is currently paused.")
+            return {"status": "paused", "message": "Cron scheduler is paused."}
+
         self.last_run_at = datetime.now(timezone.utc).isoformat()
 
         active_local_agents, active_local_issue_keys, in_review_agents = inspect_active_local_agents()

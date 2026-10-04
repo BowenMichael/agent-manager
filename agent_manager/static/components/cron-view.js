@@ -56,6 +56,21 @@ class CronView extends HTMLElement {
     }
   }
 
+  async togglePause() {
+    const isPaused = Boolean(this.cronData.is_paused);
+    const endpoint = isPaused ? '/api/cron/resume' : '/api/cron/pause';
+    try {
+      const res = await fetch(endpoint, { method: 'POST' });
+      const data = await res.json();
+      if (typeof window.showQuotaToast === 'function') {
+        window.showQuotaToast(data.message || (isPaused ? 'Cron resumed.' : 'Cron paused.'));
+      }
+      await this.loadData();
+    } catch (err) {
+      alert('Error toggling cron pause state: ' + err.message);
+    }
+  }
+
   async triggerDispatch() {
     if (this.dispatching) return;
     this.dispatching = true;
@@ -76,7 +91,7 @@ class CronView extends HTMLElement {
   }
 
   render() {
-    const { is_running, last_run_at, next_run_at, history = [] } = this.cronData;
+    const { is_running, is_paused, last_run_at, next_run_at, history = [] } = this.cronData;
     const runs = [...history].reverse();
 
     this.innerHTML = `
@@ -94,7 +109,16 @@ class CronView extends HTMLElement {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
               <span>${this.loading ? 'Refreshing...' : 'Refresh Status'}</span>
             </button>
-            <button class="btn btn-primary" id="cv-btn-dispatch" ${this.dispatching ? 'disabled' : ''} style="display: flex; align-items: center; gap: 6px;">
+            <button class="btn ${is_paused ? 'btn-success' : 'btn-secondary'}" id="cv-btn-pause" style="display: flex; align-items: center; gap: 6px;">
+              ${is_paused ? `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <span>Resume Cron</span>
+              ` : `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                <span>Pause Cron</span>
+              `}
+            </button>
+            <button class="btn btn-primary" id="cv-btn-dispatch" ${this.dispatching || is_paused ? 'disabled' : ''} style="display: flex; align-items: center; gap: 6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
               <span>${this.dispatching ? 'Dispatching Cycle...' : 'Run Dispatch Now'}</span>
             </button>
@@ -105,8 +129,8 @@ class CronView extends HTMLElement {
         <div class="cv-stats-grid">
           <div class="cv-stat-card">
             <span class="cv-stat-label">Scheduler Status</span>
-            <span class="cv-stat-value ${is_running ? 'green' : 'amber'}">
-              ${is_running ? '🟢 Active (10m loop)' : '⏸️ Paused'}
+            <span class="cv-stat-value ${is_paused ? 'amber' : is_running ? 'green' : 'amber'}">
+              ${is_paused ? '⏸️ Paused' : is_running ? '🟢 Active (10m loop)' : '⚪ Inactive'}
             </span>
           </div>
           <div class="cv-stat-card">
@@ -184,6 +208,11 @@ class CronView extends HTMLElement {
     const refreshBtn = this.querySelector('#cv-btn-refresh');
     if (refreshBtn) {
       refreshBtn.onclick = () => this.loadData();
+    }
+
+    const pauseBtn = this.querySelector('#cv-btn-pause');
+    if (pauseBtn) {
+      pauseBtn.onclick = () => this.togglePause();
     }
 
     const dispatchBtn = this.querySelector('#cv-btn-dispatch');

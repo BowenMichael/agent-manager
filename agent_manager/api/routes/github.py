@@ -32,6 +32,7 @@ async def simulate_webhook(req: SimulateWebhookRequest):
             f"- Work inside the designated branch and isolated worktree.\n"
             f"- Inspect existing code patterns before modifying.\n"
             f"- Follow AGENTS.md rules and keep documentation updated.\n"
+            f"- MANDATORY CHANGELOG RULE: Update CHANGELOG.md with your changes before opening a PR or moving to review. Initialize CHANGELOG.md if missing.\n"
             f"- When done, commit changes, open a pull request, and summarize your work."
         )
         spawn_req = SpawnRequest(

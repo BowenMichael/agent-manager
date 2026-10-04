@@ -22,6 +22,7 @@ async def get_telemetry_reports():
 async def get_cron_status():
     return {
         "is_running": dispatcher.is_running,
+        "is_paused": getattr(dispatcher, "is_paused", False),
         "last_run_at": dispatcher.last_run_at,
         "next_run_at": dispatcher.next_run_at,
         "history": dispatcher.dispatch_history[-10:]
@@ -31,3 +32,25 @@ async def get_cron_status():
 @router.post("/cron/dispatch-now")
 async def trigger_cron_dispatch():
     return await dispatcher.check_and_dispatch()
+
+
+@router.post("/cron/pause")
+async def pause_cron():
+    dispatcher.pause()
+    return {
+        "status": "ok",
+        "is_paused": dispatcher.is_paused,
+        "is_running": dispatcher.is_running,
+        "message": "Cron scheduler paused."
+    }
+
+
+@router.post("/cron/resume")
+async def resume_cron():
+    dispatcher.resume()
+    return {
+        "status": "ok",
+        "is_paused": dispatcher.is_paused,
+        "is_running": dispatcher.is_running,
+        "message": "Cron scheduler resumed."
+    }

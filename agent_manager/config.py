@@ -29,6 +29,7 @@ POLL_INTERVAL_SECONDS = int(_saved_settings.get("poll_interval_seconds") or _sav
 MAX_ACTIVE_AGENTS = int(_saved_settings.get("max_active_agents") or _saved_settings.get("MAX_ACTIVE_AGENTS") or os.getenv("MAX_ACTIVE_AGENTS", "5"))
 DEFAULT_MODEL = _saved_settings.get("default_model") or _saved_settings.get("DEFAULT_MODEL") or os.getenv("DEFAULT_MODEL", "gemini-3.8-flash")
 DEFAULT_EFFORT = (_saved_settings.get("effort_level") or _saved_settings.get("default_effort") or os.getenv("DEFAULT_EFFORT", "high")).lower()
+CRON_PAUSED = bool(_saved_settings.get("cron_paused") or os.getenv("CRON_PAUSED", "false").lower() in ("true", "1"))
 
 # Auto-detect GitHub PAT from environment or Antigravity MCP config
 GITHUB_PERSONAL_ACCESS_TOKEN = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN", "")

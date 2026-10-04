@@ -67,6 +67,7 @@ async def run_agent_loop(manager, session_id: str, initial_prompt: str, worktree
             f"3. CRITICAL TOOL EFFICIENCY: SEARCH FIRST, SLICE READING ONLY (max 100 lines), NEVER RE-READ.\n"
             f"4. ANTI-MONOLITH RULE: Keep files under 250 LOC.\n"
             f"5. Board status columns are managed directly.\n"
+            f"6. MANDATORY CHANGELOG RULE: Update CHANGELOG.md with your changes before opening a PR or moving to review. Initialize CHANGELOG.md if missing.\n"
         )
 
         if current_mode == "terminal":

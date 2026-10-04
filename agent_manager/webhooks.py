@@ -63,6 +63,7 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
                 f"- Work inside the designated branch and isolated worktree.\n"
                 f"- Inspect existing code patterns before modifying.\n"
                 f"- Follow AGENTS.md rules and keep documentation updated.\n"
+                f"- MANDATORY CHANGELOG RULE: Update CHANGELOG.md with your changes before opening a PR or moving to review. Initialize CHANGELOG.md if missing.\n"
                 f"- STANDARDIZED AGENT COMMENT RULE: When posting comments on GitHub issues/PRs, you MUST start with a standardized header badge (e.g., `🤖 **Agent Takeover: Development Started**` or `🤖 **Autonomous Agent**`) and include the disclaimer footer: `\\n\\n---\\n*Posted automatically by Agent Manager | Worktree: .worktrees/issue-{issue_number}*`.\n"
                 f"- When done, commit changes, open a pull request, and summarize your work."
             )
@@ -104,7 +105,7 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
                 issue_number = item.get("content_node_id") # May require query or metadata
                 prompt = (
                     f"An issue on the Project Board was moved to '📋 Ready for Agent'.\n"
-                    f"Please review the Project Board, inspect the card details, and execute the task following AGENTS.md."
+                    f"Please review the Project Board, inspect the card details, and execute the task following AGENTS.md (including updating CHANGELOG.md)."
                 )
                 req = SpawnRequest(
                     repo=repo,

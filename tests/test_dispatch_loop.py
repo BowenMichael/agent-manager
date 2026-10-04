@@ -12,6 +12,17 @@ class TestDispatchLoop(unittest.TestCase):
         # Reset singleton instance between tests
         ProjectBacklogDispatcher._instance = None
         self.dispatcher = ProjectBacklogDispatcher()
+        self.dispatcher.is_paused = False
+
+    def test_check_and_dispatch_skips_when_paused(self):
+        async def run_test():
+            self.dispatcher.pause()
+            self.assertTrue(self.dispatcher.is_paused)
+            result = await self.dispatcher.check_and_dispatch()
+            self.assertEqual(result["status"], "paused")
+            self.dispatcher.resume()
+            self.assertFalse(self.dispatcher.is_paused)
+        asyncio.run(run_test())
 
     @patch("agent_manager.cron.scheduler.check_and_update_agent_manager")
     @patch("agent_manager.cron.scheduler.fetch_board_items_per_project")

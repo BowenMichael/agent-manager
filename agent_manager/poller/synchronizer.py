@@ -57,6 +57,7 @@ async def handle_active_session_comments(watcher, active_session, item_id: str, 
         f"- Address the user's question or feedback directly.\n"
         f"- Follow AGENTS.md rules: do not add issue labels, keep status transitions purely on the Project Board.\n"
         f"- If code changes or tests are needed, execute them in your worktree.\n"
+        f"- MANDATORY CHANGELOG RULE: If code changes are introduced, update CHANGELOG.md under [Unreleased] referencing Issue #{issue_num}.\n"
         f"- When finished, summarize your findings or post your response."
     )
     await watcher.runner.add_context(active_session.session_id, continuation_prompt)
@@ -82,7 +83,8 @@ async def handle_ready_status(watcher, active_session, item_id: str, issue_num: 
 
         continuation_prompt = (
             f"{prompt_text}\n\n"
-            f"Please review the work completed in the worktree, test existing features, and continue working on any remaining requirements."
+            f"Please review the work completed in the worktree, test existing features, and continue working on any remaining requirements. "
+            f"Ensure CHANGELOG.md is updated before moving to review."
         )
         await watcher.runner.add_context(active_session.session_id, continuation_prompt)
     else:
@@ -129,6 +131,7 @@ async def handle_ready_status(watcher, active_session, item_id: str, issue_num: 
                 f"- ANTI-MONOLITH RULE: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files (models, services, utils, components). When modifying large files (>300 lines), extract new functions into separate helper files.\n"
                 f"{guardrails_line}"
                 f"- Follow AGENTS.md rules and keep documentation updated.\n"
+                f"- MANDATORY CHANGELOG RULE: Update CHANGELOG.md in the repository root with a bullet point under the active release or [Unreleased] section describing changes linked to Issue #{issue_num}. If CHANGELOG.md does not exist, initialize it following Keep a Changelog standards.\n"
                 f"- STANDARDIZED AGENT COMMENT RULE: When posting comments on GitHub issues/PRs, you MUST start with a standardized header badge (e.g., `🤖 **Agent Takeover: Development Started**` or `🤖 **Autonomous Agent**`) and include the disclaimer footer: `\\n\\n---\\n*Posted automatically by Agent Manager | Worktree: .worktrees/issue-{issue_num}*`.\n"
                 f"- CRITICAL RULE: Do NOT add, remove, or modify GitHub issue labels/tags. Status transitions are managed purely on the GitHub Project Board columns.\n"
                 f"- When done, commit changes, open a pull request, and summarize your work."

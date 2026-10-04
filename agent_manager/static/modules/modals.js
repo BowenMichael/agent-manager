@@ -132,7 +132,7 @@ function openLaunchModalWithIssue(repo, issueNumber, title) {
   if (launchRepo) launchRepo.value = repo || 'BowenMichael/fit-elo';
   if (launchIssueNum) launchIssueNum.value = issueNumber || '';
   if (launchPrompt) {
-    launchPrompt.value = `You have been assigned to GitHub Issue #${issueNumber} in ${repo}.\n\n**Title**: ${title}\n\nWork inside the designated branch and worktree, inspect code patterns, follow AGENTS.md, run tests, and open a PR when completed.`;
+    launchPrompt.value = `You have been assigned to GitHub Issue #${issueNumber} in ${repo}.\n\n**Title**: ${title}\n\nWork inside the designated branch and worktree, inspect code patterns, follow AGENTS.md, update CHANGELOG.md, run tests, and open a PR when completed.`;
   }
   modalLaunch.classList.remove('hidden');
 }
