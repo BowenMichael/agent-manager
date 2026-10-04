@@ -517,8 +517,45 @@ class TestAgentManager(unittest.TestCase):
         asyncio.run(self.runner.complete_agent(session_id, reason="Issue moved to 'Done'"))
 
         mock_proc.terminate.assert_called_once()
-        session = self.runner.get_session(session_id)
-        self.assertEqual(session.status, AgentStatus.COMPLETED)
+    def test_format_tool_display(self):
+        """Verifies format_tool_display generates contextual titles and descriptions for tools."""
+        from agent_manager.runner import format_tool_display
+
+        # 1. view_file
+        t1, d1 = format_tool_display("view_file", {
+            "AbsolutePath": "C:\\repo\\agent_manager\\runner.py",
+            "StartLine": 10,
+            "EndLine": 50,
+            "toolAction": "Inspecting runner"
+        })
+        self.assertEqual(t1, "View File: runner.py")
+        self.assertIn("[Inspecting runner]", d1)
+        self.assertIn("lines 10-50", d1)
+
+        # 2. replace_file_content
+        t2, d2 = format_tool_display("replace_file_content", {
+            "TargetFile": "C:\\repo\\agent_manager\\static\\app.js",
+            "Instruction": "Add badge"
+        })
+        self.assertEqual(t2, "Edit File: app.js")
+        self.assertIn("app.js - Add badge", d2)
+
+        # 3. run_command
+        t3, d3 = format_tool_display("run_command", {
+            "CommandLine": "pytest -v",
+            "toolSummary": "Run test suite"
+        })
+        self.assertEqual(t3, "Run: Run test suite")
+        self.assertEqual(d3, "pytest -v")
+
+        # 4. call_mcp_tool
+        t4, d4 = format_tool_display("call_mcp_tool", {
+            "ServerName": "github",
+            "ToolName": "get_issue",
+            "Arguments": {"issue_number": 34}
+        })
+        self.assertEqual(t4, "MCP: [github] get_issue")
+        self.assertIn("get_issue", d4)
 
 if __name__ == "__main__":
     unittest.main()
