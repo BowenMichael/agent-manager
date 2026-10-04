@@ -156,7 +156,11 @@ function renderProjectsTable(items, isAllProjectsView, activeFilter, searchQuery
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
         </svg>
         <p style="margin: 0 0 6px 0; font-weight: 600;">No tasks found matching criteria.</p>
-        <small style="color: var(--text-muted);">Try clearing the search filter or create a new issue for this project.</small>
+        <small style="color: var(--text-muted); display: block; margin-bottom: 12px;">Create a new issue to dispatch an agent or add a task to this project backlog.</small>
+        <button class="btn btn-primary btn-empty-create-task" style="font-size: 0.8rem; padding: 6px 14px; margin: 0 auto; display: inline-flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>+ Create Issue in Project</span>
+        </button>
       </div>
     `;
   }

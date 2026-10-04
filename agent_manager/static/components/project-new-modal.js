@@ -3,12 +3,13 @@
  * Modal dialog for creating new GitHub issues across projects directly from the Project View.
  */
 (function() {
-function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreated = null) {
+function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreated = null, defaultStatus = 'ready') {
   let modal = document.getElementById('modal-new-project-issue');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'modal-new-project-issue';
-    modal.className = 'modal-backdrop hidden';
+    modal.className = 'modal-overlay hidden';
+    modal.style.zIndex = '9999';
     modal.innerHTML = `
       <div class="modal-card" style="max-width: 580px;">
         <div class="modal-header">
@@ -16,7 +17,7 @@ function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreate
             <span style="font-size: 1.2rem;">✨</span>
             <h3 style="margin: 0; font-size: 1.1rem;">Create Project Issue</h3>
           </div>
-          <button class="btn-icon" id="btn-close-new-issue-modal">&times;</button>
+          <button class="modal-close" id="btn-close-new-issue-modal">&times;</button>
         </div>
         <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px; padding: 18px 24px;">
           <div class="form-group">
@@ -27,6 +28,14 @@ function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreate
               <option value="BowenMichael/leanfolio">📈 Leanfolio (BowenMichael/leanfolio)</option>
               <option value="BowenMichael/agent-manager">🤖 Agent Manager (BowenMichael/agent-manager)</option>
               <option value="BowenMichael/f1-frontend">🏎️ F1 Frontend (BowenMichael/f1-frontend)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px;">Initial Board Column / Priority</label>
+            <select id="new-issue-status" class="form-control" style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 6px; color: #fff;">
+              <option value="ready">📋 Ready for Agent (Starts Execution Immediately)</option>
+              <option value="backlog">📥 Backlog (Queue for Autonomous Cron)</option>
             </select>
           </div>
 
@@ -46,7 +55,7 @@ function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreate
         <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--border-color);">
           <button class="btn btn-secondary" id="btn-cancel-new-issue">Cancel</button>
           <button class="btn btn-primary" id="btn-submit-new-issue" style="display: flex; align-items: center; gap: 6px;">
-            <span>Create & Dispatch</span>
+            <span>Create & Add to Project</span>
           </button>
         </div>
       </div>
@@ -59,6 +68,7 @@ function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreate
     const submitBtn = modal.querySelector('#btn-submit-new-issue');
     submitBtn.onclick = async () => {
       const repo = modal.querySelector('#new-issue-repo').value;
+      const status = modal.querySelector('#new-issue-status')?.value || 'ready';
       const title = modal.querySelector('#new-issue-title').value.trim();
       const body = modal.querySelector('#new-issue-body').value.trim();
       const statusEl = modal.querySelector('#new-issue-status-msg');
@@ -78,7 +88,7 @@ function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreate
         const resp = await fetch('/api/projects/issues', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ repo, title, body })
+          body: JSON.stringify({ repo, title, body, status })
         });
         const res = await resp.json();
         if (!resp.ok) {
@@ -100,10 +110,14 @@ function openNewProjectIssueModal(defaultRepo = 'BowenMichael/fit-elo', onCreate
     };
   }
 
-  // Pre-select repo
+  // Pre-select repo & status
   const repoSelect = modal.querySelector('#new-issue-repo');
   if (repoSelect && defaultRepo) {
     repoSelect.value = defaultRepo;
+  }
+  const statusSelect = modal.querySelector('#new-issue-status');
+  if (statusSelect && defaultStatus) {
+    statusSelect.value = defaultStatus;
   }
   const titleInput = modal.querySelector('#new-issue-title');
   if (titleInput) titleInput.value = '';

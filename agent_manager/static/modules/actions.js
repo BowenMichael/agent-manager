@@ -252,6 +252,14 @@ function initActionButtons() {
       if (typeof window.showProjectsView === 'function') window.showProjectsView();
     });
   }
+
+  const btnHeaderCron = document.getElementById('btn-header-cron');
+  if (btnHeaderCron) {
+    btnHeaderCron.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.showCronView === 'function') window.showCronView();
+    });
+  }
 }
 
 window.archiveAgent = archiveAgent;

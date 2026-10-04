@@ -73,7 +73,7 @@ async def create_issue(req: CreateIssueRequest):
             num = issue_data.get("number")
             node_id = issue_data.get("node_id")
 
-            # Link issue directly to Project #3 board
+            # Link issue directly to Project #3 board and set initial status
             if node_id:
                 try:
                     add_mutation = """
@@ -83,11 +83,23 @@ async def create_issue(req: CreateIssueRequest):
                       }
                     }
                     """
-                    await client.post(
+                    add_resp = await client.post(
                         "https://api.github.com/graphql",
                         json={"query": add_mutation, "variables": {"projectId": "PVT_kwHOAgkA3s4BlnSi", "contentId": node_id}},
                         headers={"Authorization": f"Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}", "Content-Type": "application/json"}
                     )
+                    res_json = add_resp.json()
+                    item_id = (res_json.get("data", {}).get("addProjectV2ItemById", {}).get("item", {}) or {}).get("id")
+                    if item_id:
+                        from agent_manager.poller.github_client import GitHubBoardClient
+                        board_client = GitHubBoardClient()
+                        target_key = "ready"
+                        s_lower = str(req.status or "").lower()
+                        if "backlog" in s_lower:
+                            target_key = "backlog"
+                        elif "progress" in s_lower:
+                            target_key = "in_progress"
+                        await board_client.update_item_status(item_id, target_key, "PVT_kwHOAgkA3s4BlnSi")
                 except Exception as ex:
                     logger.warning(f"Could not automatically attach issue to project board: {ex}")
 

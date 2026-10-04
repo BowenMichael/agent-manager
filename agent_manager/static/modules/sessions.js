@@ -123,17 +123,21 @@ function showDashboardView() {
   document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
   const btnHeaderProjects = document.getElementById('btn-header-projects');
   const btnShowProjects = document.getElementById('btn-show-projects');
+  const btnHeaderCron = document.getElementById('btn-header-cron');
   if (btnHeaderProjects) btnHeaderProjects.classList.remove('active');
   if (btnShowProjects) btnShowProjects.classList.remove('active');
+  if (btnHeaderCron) btnHeaderCron.classList.remove('active');
 
   const consoleActive = document.getElementById('console-active');
   const consoleEmpty = document.getElementById('console-empty');
   const globalDashboard = document.getElementById('global-dashboard');
   const globalProjects = document.getElementById('global-projects-view');
+  const globalCron = document.getElementById('global-cron-view');
 
   if (consoleActive) consoleActive.classList.add('hidden');
   if (consoleEmpty) consoleEmpty.classList.add('hidden');
   if (globalProjects) globalProjects.classList.add('hidden');
+  if (globalCron) globalCron.classList.add('hidden');
   if (globalDashboard) {
     globalDashboard.classList.remove('hidden');
     globalDashboard.sessions = window.sessions;
@@ -145,21 +149,53 @@ function showProjectsView() {
   document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
   const btnHeaderProjects = document.getElementById('btn-header-projects');
   const btnShowProjects = document.getElementById('btn-show-projects');
+  const btnHeaderCron = document.getElementById('btn-header-cron');
   if (btnHeaderProjects) btnHeaderProjects.classList.add('active');
   if (btnShowProjects) btnShowProjects.classList.add('active');
+  if (btnHeaderCron) btnHeaderCron.classList.remove('active');
 
   const consoleActive = document.getElementById('console-active');
   const consoleEmpty = document.getElementById('console-empty');
   const globalDashboard = document.getElementById('global-dashboard');
   const globalProjects = document.getElementById('global-projects-view');
+  const globalCron = document.getElementById('global-cron-view');
 
   if (consoleActive) consoleActive.classList.add('hidden');
   if (consoleEmpty) consoleEmpty.classList.add('hidden');
   if (globalDashboard) globalDashboard.classList.add('hidden');
+  if (globalCron) globalCron.classList.add('hidden');
   if (globalProjects) {
     globalProjects.classList.remove('hidden');
     if (typeof globalProjects.loadData === 'function') {
       globalProjects.loadData();
+    }
+  }
+}
+
+function showCronView() {
+  window.activeSessionId = null;
+  document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
+  const btnHeaderProjects = document.getElementById('btn-header-projects');
+  const btnShowProjects = document.getElementById('btn-show-projects');
+  const btnHeaderCron = document.getElementById('btn-header-cron');
+  if (btnHeaderProjects) btnHeaderProjects.classList.remove('active');
+  if (btnShowProjects) btnShowProjects.classList.remove('active');
+  if (btnHeaderCron) btnHeaderCron.classList.add('active');
+
+  const consoleActive = document.getElementById('console-active');
+  const consoleEmpty = document.getElementById('console-empty');
+  const globalDashboard = document.getElementById('global-dashboard');
+  const globalProjects = document.getElementById('global-projects-view');
+  const globalCron = document.getElementById('global-cron-view');
+
+  if (consoleActive) consoleActive.classList.add('hidden');
+  if (consoleEmpty) consoleEmpty.classList.add('hidden');
+  if (globalDashboard) globalDashboard.classList.add('hidden');
+  if (globalProjects) globalProjects.classList.add('hidden');
+  if (globalCron) {
+    globalCron.classList.remove('hidden');
+    if (typeof globalCron.loadData === 'function') {
+      globalCron.loadData();
     }
   }
 }
@@ -170,8 +206,10 @@ function selectSession(sessionId) {
 
   const btnHeaderProjects = document.getElementById('btn-header-projects');
   const btnShowProjects = document.getElementById('btn-show-projects');
+  const btnHeaderCron = document.getElementById('btn-header-cron');
   if (btnHeaderProjects) btnHeaderProjects.classList.remove('active');
   if (btnShowProjects) btnShowProjects.classList.remove('active');
+  if (btnHeaderCron) btnHeaderCron.classList.remove('active');
 
   document.querySelectorAll('.session-card').forEach(c => {
     c.classList.toggle('selected', c.dataset.id === sessionId);
@@ -182,11 +220,13 @@ function selectSession(sessionId) {
 
   const globalDashboard = document.getElementById('global-dashboard');
   const globalProjects = document.getElementById('global-projects-view');
+  const globalCron = document.getElementById('global-cron-view');
   const consoleActive = document.getElementById('console-active');
   const consoleEmpty = document.getElementById('console-empty');
 
   if (globalDashboard) globalDashboard.classList.add('hidden');
   if (globalProjects) globalProjects.classList.add('hidden');
+  if (globalCron) globalCron.classList.add('hidden');
   if (consoleEmpty) consoleEmpty.classList.add('hidden');
   if (consoleActive) consoleActive.classList.remove('hidden');
 
@@ -199,4 +239,5 @@ window.updateStats = updateStats;
 window.renderSessionsList = renderSessionsList;
 window.showDashboardView = showDashboardView;
 window.showProjectsView = showProjectsView;
+window.showCronView = showCronView;
 window.selectSession = selectSession;

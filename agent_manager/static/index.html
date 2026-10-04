@@ -16,7 +16,8 @@
   <link rel="stylesheet" href="/static/components/git-tree-viewer.css">
   <link rel="stylesheet" href="/static/components/issue-viewer.css">
   <link rel="stylesheet" href="/static/components/agent-summary-overview.css">
-  <link rel="stylesheet" href="/static/components/projects-view.css?v=20261004c">
+  <link rel="stylesheet" href="/static/components/cron-view.css?v=20261004f">
+  <link rel="stylesheet" href="/static/components/projects-view.css?v=20261004f">
 </head>
 <body>
   <div class="app-layout">
@@ -53,6 +54,10 @@
         <button class="btn btn-secondary link-pill" id="btn-header-projects" title="View Project Portfolio & Multi-Project Tables">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
           Projects View
+        </button>
+        <button class="btn btn-secondary link-pill" id="btn-header-cron" title="View Autonomous Cron Runs & Scheduler History">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          Cron Runs
         </button>
         <a href="https://github.com/users/BowenMichael/projects/3" target="_blank" class="btn btn-secondary link-pill" title="Open GitHub Project Board">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
@@ -160,6 +165,7 @@
       <!-- Center / Right Panel: Live Agent Console & Interactive Workspace -->
       <section class="console-panel" id="console-panel">
         <projects-view id="global-projects-view" class="hidden"></projects-view>
+        <cron-view id="global-cron-view" class="hidden"></cron-view>
         <agent-summary-overview id="global-dashboard" class="hidden"></agent-summary-overview>
 
         <div class="console-empty" id="console-empty">
@@ -919,22 +925,23 @@
   <script src="/static/components/git-tree-viewer.js"></script>
   <script src="/static/components/issue-viewer.js"></script>
   <script src="/static/components/agent-summary-overview.js"></script>
-  <script src="/static/components/projects-table.js?v=20261004c"></script>
-  <script src="/static/components/project-new-modal.js?v=20261004c"></script>
-  <script src="/static/components/projects-view.js?v=20261004c"></script>
-  <script src="/static/utils/api-client.js?v=20261004c"></script>
-  <script src="/static/utils/github-links.js?v=20261004c"></script>
-  <script src="/static/modules/formatters.js?v=20261004c"></script>
-  <script src="/static/modules/telemetry.js?v=20261004c"></script>
-  <script src="/static/modules/overview.js?v=20261004c"></script>
-  <script src="/static/modules/transcript.js?v=20261004c"></script>
-  <script src="/static/modules/sessions.js?v=20261004c"></script>
-  <script src="/static/modules/settings.js?v=20261004c"></script>
-  <script src="/static/modules/settings_form.js?v=20261004c"></script>
-  <script src="/static/modules/modals.js?v=20261004c"></script>
-  <script src="/static/modules/actions.js?v=20261004c"></script>
-  <script src="/static/modules/socket.js?v=20261004c"></script>
-  <script src="/static/app.js?v=20261004c"></script>
+  <script src="/static/components/projects-table.js?v=20261004g"></script>
+  <script src="/static/components/project-new-modal.js?v=20261004g"></script>
+  <script src="/static/components/projects-view.js?v=20261004g"></script>
+  <script src="/static/components/cron-view.js?v=20261004g"></script>
+  <script src="/static/utils/api-client.js?v=20261004g"></script>
+  <script src="/static/utils/github-links.js?v=20261004g"></script>
+  <script src="/static/modules/formatters.js?v=20261004g"></script>
+  <script src="/static/modules/telemetry.js?v=20261004g"></script>
+  <script src="/static/modules/overview.js?v=20261004g"></script>
+  <script src="/static/modules/transcript.js?v=20261004g"></script>
+  <script src="/static/modules/sessions.js?v=20261004g"></script>
+  <script src="/static/modules/settings.js?v=20261004g"></script>
+  <script src="/static/modules/settings_form.js?v=20261004g"></script>
+  <script src="/static/modules/modals.js?v=20261004g"></script>
+  <script src="/static/modules/actions.js?v=20261004g"></script>
+  <script src="/static/modules/socket.js?v=20261004g"></script>
+  <script src="/static/app.js?v=20261004g"></script>
   <div class="toast-stack" id="toast-stack"></div>
 </body>
 </html>
