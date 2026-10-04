@@ -123,10 +123,11 @@ def find_local_workspace(repo_full_name: str) -> Optional[Path]:
             if depth >= 3:
                 dirs.clear()
 
-            if root_path.name.lower() == repo_name.lower() and (root_path / ".git").exists():
+            if (root_path / ".git").exists():
                 if _is_matching_repo(root_path, repo_full_name):
                     return root_path
-                candidate_match_by_name.append(root_path)
+                if root_path.name.lower() == repo_name.lower():
+                    candidate_match_by_name.append(root_path)
     except Exception as e:
         logger.error(f"Error while scanning workspaces under {base}: {e}")
 
