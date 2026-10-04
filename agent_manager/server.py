@@ -86,7 +86,7 @@ async def get_settings():
         "masked_gemini_api_key": masked_key,
         "default_repo": config.DEFAULT_REPO,
         "project_board_id": config.PROJECT_BOARD_ID,
-        "agy_mode": getattr(config, "AGY_MODE", "web_stream"),
+        "agy_mode": getattr(config, "AGY_MODE", "terminal"),
         "agy_cli_installed": config.AGY_CLI_PATH.exists(),
         "agy_cli_path": str(config.AGY_CLI_PATH),
         "default_model": getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash"),

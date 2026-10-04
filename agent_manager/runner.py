@@ -826,16 +826,19 @@ class AgentRunnerManager:
         await self.broadcast("session_updated", session.model_dump())
 
         planning_prompt = (
-            f"You are a principal software architect. You are planning the implementation for GitHub Issue #{issue_num} in {cwd_dir}.\n\n"
+            f"You are a principal software architect. You are formulating the high-level implementation strategy for GitHub Issue #{issue_num} in {cwd_dir}.\n\n"
             f"### Issue Requirements Summary:\n{session.pipeline_summary}\n\n"
             f"### Original Task Description:\n{task_description}\n\n"
             f"### Codebase Context (Repository Structure & Configurations):\n{repo_context}\n\n"
-            f"Create a step-by-step implementation plan including:\n"
-            f"1. Architecture & Design Blueprint (referencing existing project files)\n"
-            f"2. Exact Files to Modify / Create (STRICT ANTI-MONOLITH: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files)\n"
-            f"3. Implementation Steps (ordered)\n"
-            f"4. Verification & Testing Strategy (with command log suppression)\n"
-            f"Make the instructions unambiguous for the implementation model."
+            f"**PLANNING DIRECTIVE (Architectural Guidance over Code Implementation)**:\n"
+            f"- DO NOT write full code implementations, function bodies, or large code diffs in this plan.\n"
+            f"- Focus on high-level architectural design, system boundaries, and clear step-by-step instructions.\n"
+            f"- Give Stage 3 (the implementation model) all the structural guidance, file targets, and verification criteria it needs so it can write the code itself.\n\n"
+            f"Provide a structured plan containing:\n"
+            f"1. **Architectural Overview**: Conceptual approach, component interactions, and key design decisions.\n"
+            f"2. **Target Files & Modular Breakdown**: Exact files to create or modify. STRICT ANTI-MONOLITH RULE: Keep all files under 250 lines; decompose into dedicated modular files (`models/`, `services/`, `components/`, `utils/`).\n"
+            f"3. **Step-by-Step Implementation Guide**: Clear, ordered instructions specifying WHAT each component must accomplish without writing full code blocks.\n"
+            f"4. **Verification & Testing Criteria**: Expected behavior, test commands to run, and verification checklist (with command log suppression)."
         )
         plan_result = await self._run_cli_turn(session_id, planning_prompt, cwd_dir, plan_model, plan_effort)
         session.pipeline_plan = plan_result or "Plan formulated."
