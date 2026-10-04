@@ -32,6 +32,65 @@ def _looks_like_quota_error(text: str) -> bool:
     t = (text or "").lower()
     return any(p in t for p in QUOTA_PATTERNS)
 
+def format_tool_display(tool_name: str, tool_args: Optional[dict] = None) -> tuple[str, str]:
+    """Generates a human-friendly tool call title and descriptive summary from tool arguments."""
+    name = tool_name or "tool"
+    args = tool_args or {}
+
+    if name == "view_file":
+        target = args.get("AbsolutePath") or args.get("path") or ""
+        base = target.replace("\\", "/").rstrip("/").split("/")[-1] if target else ""
+        title = f"View File: {base}" if base else "View File"
+        start_line = args.get("StartLine")
+        end_line = args.get("EndLine")
+        line_info = f" (lines {start_line}-{end_line})" if start_line is not None and end_line is not None else ""
+        action = args.get("toolAction") or args.get("toolSummary")
+        action_prefix = f"[{action}] " if action else ""
+        desc = f"{action_prefix}{target}{line_info}".strip() or "Viewing file"
+        return title, desc
+
+    if name in ("replace_file_content", "write_to_file", "multi_replace_file_content"):
+        target = args.get("TargetFile") or args.get("path") or ""
+        base = target.replace("\\", "/").rstrip("/").split("/")[-1] if target else ""
+        verb = "Write File" if name == "write_to_file" else "Edit File"
+        title = f"{verb}: {base}" if base else verb
+        instruction = args.get("Instruction") or args.get("Description") or args.get("toolAction") or args.get("toolSummary") or ""
+        instr_str = f" - {instruction}" if instruction else ""
+        desc = f"{target}{instr_str}".strip() or f"{verb} operation"
+        return title, desc
+
+    if name == "run_command":
+        cmd = args.get("CommandLine") or args.get("command") or ""
+        summary = args.get("toolSummary") or args.get("toolAction")
+        title = f"Run: {summary}" if summary else "Run Command"
+        desc = cmd or "Running shell command"
+        return title, desc
+
+    if name == "call_mcp_tool":
+        sub_tool = args.get("ToolName") or "mcp_tool"
+        server = args.get("ServerName")
+        server_str = f"[{server}] " if server else ""
+        title = f"MCP: {server_str}{sub_tool}"
+        sub_args = args.get("Arguments")
+        sub_args_str = json.dumps(sub_args) if isinstance(sub_args, dict) else (str(sub_args) if sub_args else "")
+        desc = f"{sub_tool}({sub_args_str})" if sub_args_str else sub_tool
+        return title, desc
+
+    # Generic tool fallback
+    summary = args.get("toolSummary") or args.get("toolAction")
+    title = f"{name}: {summary}" if summary else f"Tool Call: {name}"
+    # Summarize key parameters
+    params_summary = []
+    for k, v in list(args.items())[:3]:
+        if k in ("toolAction", "toolSummary"):
+            continue
+        v_str = str(v)
+        if len(v_str) > 60:
+            v_str = v_str[:57] + "..."
+        params_summary.append(f"{k}={v_str}")
+    desc = ", ".join(params_summary) if params_summary else f"Executing {name}"
+    return title, desc
+
 class AgentRunnerManager:
     _instance: Optional["AgentRunnerManager"] = None
 
@@ -709,19 +768,31 @@ class AgentRunnerManager:
                                 tname = step.get("tool_name", "tool")
                                 tinfo = step.get("tool_info", {})
                                 if sstate == "ACTIVE":
-                                    session.current_activity = f"Executing tool: {tname}"
+                                    tparams = tinfo.get("parameters") or {}
+                                    title_text, desc_text = format_tool_display(tname, tparams)
+                                    session.current_activity = f"Executing: {title_text}"
                                     await self._append_message(
                                         session_id,
                                         MessageRole.TOOL_CALL,
-                                        f"Tool Call: {tname}",
+                                        f"{title_text}\n{desc_text}".strip(),
                                         tool_name=tname,
-                                        tool_args=tinfo.get("parameters")
+                                        tool_args=tparams
                                     )
                                 elif sstate == "DONE":
+                                    raw_out = tinfo.get("output", "")
+                                    out_str = str(raw_out) if raw_out is not None else ""
+                                    # Provide informative terminal log summary
+                                    if out_str.strip() and out_str.strip() != "Done":
+                                        result_content = out_str
+                                    else:
+                                        # When output is empty or generic 'Done', give descriptive completion note
+                                        tparams = tinfo.get("parameters") or {}
+                                        title_text, _ = format_tool_display(tname, tparams)
+                                        result_content = f"Completed: {title_text}"
                                     await self._append_message(
                                         session_id,
                                         MessageRole.TOOL_RESULT,
-                                        str(tinfo.get("output", "Done")),
+                                        result_content,
                                         tool_name=tname
                                     )
                             elif stype == "agent_response":

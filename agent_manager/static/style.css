@@ -651,6 +651,29 @@ body {
   margin-bottom: 4px;
 }
 
+.tool-tag-file, .tool-tag-cmd, .tool-tag-mcp {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 6px;
+  background: rgba(0, 229, 255, 0.12);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+}
+
+.tool-tag-cmd {
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.tool-tag-mcp {
+  background: rgba(168, 85, 247, 0.12);
+  color: #d8b4fe;
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
 .tool-args {
   color: var(--text-muted);
   white-space: pre-wrap;
