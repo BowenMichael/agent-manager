@@ -44,6 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.title = 'Agent Manager';
   });
 
+  const btnShowDashboard = document.getElementById('btn-show-dashboard');
+  if (btnShowDashboard) {
+    btnShowDashboard.addEventListener('click', () => {
+      showDashboardView();
+    });
+  }
+
   // Global listener for interactive file viewer badges
   document.addEventListener('click', (e) => {
     const badge = e.target.closest('.file-clickable-badge');
@@ -99,6 +106,7 @@ const statTokens = document.getElementById('stat-tokens');
 
 const consoleEmpty = document.getElementById('console-empty');
 const consoleActive = document.getElementById('console-active');
+const globalDashboard = document.getElementById('global-dashboard');
 
 const currentStatusTag = document.getElementById('current-status-tag');
 const currentTitle = document.getElementById('current-title');
@@ -378,6 +386,10 @@ function updateStats() {
 
   const filtered = getFilteredSessions();
   sessionsCount.textContent = filtered.length;
+
+  if (globalDashboard) {
+    globalDashboard.sessions = sessions;
+  }
 }
 
 function renderSessionsList() {
@@ -458,6 +470,17 @@ function renderSessionsList() {
   });
 }
 
+function showDashboardView() {
+  activeSessionId = null;
+  document.querySelectorAll('.session-card').forEach(c => c.classList.remove('selected'));
+  if (consoleActive) consoleActive.classList.add('hidden');
+  if (consoleEmpty) consoleEmpty.classList.add('hidden');
+  if (globalDashboard) {
+    globalDashboard.classList.remove('hidden');
+    globalDashboard.sessions = sessions;
+  }
+}
+
 function selectSession(sessionId) {
   activeSessionId = sessionId;
   currentStreamingBubble = null;
@@ -469,12 +492,15 @@ function selectSession(sessionId) {
   const session = sessions.find(s => s.session_id === sessionId);
   if (!session) return;
 
+  if (globalDashboard) globalDashboard.classList.add('hidden');
   consoleEmpty.classList.add('hidden');
   consoleActive.classList.remove('hidden');
 
   updateActiveSessionView(session);
   renderTranscript(session);
 }
+window.selectSession = selectSession;
+window.showDashboardView = showDashboardView;
 
 function updateActiveSessionView(session) {
   renderQuotaBanner(session);

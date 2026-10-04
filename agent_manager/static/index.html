@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/static/components/agent-tabs.css">
   <link rel="stylesheet" href="/static/components/git-tree-viewer.css">
   <link rel="stylesheet" href="/static/components/issue-viewer.css">
+  <link rel="stylesheet" href="/static/components/agent-summary-overview.css">
 </head>
 <body>
   <div class="app-layout">
@@ -95,9 +96,19 @@
             <h2 id="sidebar-title">Active Sessions</h2>
             <span class="badge" id="sessions-count">0</span>
           </div>
-          <button class="btn-icon" id="btn-sync-board" title="Sync with GitHub Project Board">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-          </button>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button class="btn-icon" id="btn-show-dashboard" title="View Multi-Agent Dashboard">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+            </button>
+            <button class="btn-icon" id="btn-sync-board" title="Sync with GitHub Project Board">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+            </button>
+          </div>
         </div>
 
         <div class="sidebar-filters">
@@ -140,6 +151,8 @@
 
       <!-- Center / Right Panel: Live Agent Console & Interactive Workspace -->
       <section class="console-panel" id="console-panel">
+        <agent-summary-overview id="global-dashboard" class="hidden"></agent-summary-overview>
+
         <div class="console-empty" id="console-empty">
           <div class="console-empty-card">
             <div class="empty-icon">⚡</div>
@@ -892,6 +905,7 @@
   <script src="/static/components/agent-tabs-controller.js"></script>
   <script src="/static/components/git-tree-viewer.js"></script>
   <script src="/static/components/issue-viewer.js"></script>
+  <script src="/static/components/agent-summary-overview.js"></script>
   <script src="/static/utils/api-client.js"></script>
   <script src="/static/app.js"></script>
   <div class="toast-stack" id="toast-stack"></div>
