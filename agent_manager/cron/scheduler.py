@@ -34,11 +34,43 @@ class ProjectBacklogDispatcher:
     async def check_and_dispatch(self) -> Dict[str, Any]:
         """
         1. FIRST THING: If no agents are running, checks if agent-manager is on latest version of main and updates it.
-        2. Checks GitHub project boards for active issues in progress or ready for agent.
-        3. If no active issues exist, takes one issue from the backlog and marks it 'Ready for Agent'.
-        4. If backlog is empty, does nothing.
+        2. Checks if any agents are actively running or initializing locally. If so, skips dispatch.
+        3. Checks GitHub project boards for active issues in progress or ready for agent.
+        4. If no active issues exist, takes one issue from the backlog and marks it 'Ready for Agent'.
+        5. If backlog is empty, does nothing.
         """
         self.last_run_at = datetime.now(timezone.utc).isoformat()
+
+        # Check local runner for active agents
+        active_local_agents = []
+        try:
+            from agent_manager.runner import AgentRunnerManager
+            from agent_manager.models import AgentStatus
+
+            runner = AgentRunnerManager()
+            for s in runner.list_sessions(include_archived=False):
+                if s.status in (AgentStatus.RUNNING, AgentStatus.INITIALIZING):
+                    active_local_agents.append(s.session_id)
+            if getattr(runner, "_active_agents", None):
+                for sid, proc in runner._active_agents.items():
+                    if proc and getattr(proc, "returncode", None) is None:
+                        if sid not in active_local_agents:
+                            active_local_agents.append(sid)
+        except Exception as e:
+            logger.warning(f"[Cron Dispatcher] Could not inspect local agent sessions: {e}")
+
+        if active_local_agents:
+            msg = f"Local active agent(s) detected ({len(active_local_agents)} active: {active_local_agents}). Skipping backlog promotion."
+            logger.info(f"[Cron Dispatcher] {msg}")
+            result = {
+                "status": "agents_running",
+                "message": msg,
+                "active_agent_count": len(active_local_agents),
+                "active_agents": active_local_agents
+            }
+            self.dispatch_history.append({"timestamp": self.last_run_at, **result})
+            return result
+
         update_result = await self.check_and_update_agent_manager()
 
         logger.info("[Cron Dispatcher] Checking project boards for active / ready issues...")
@@ -148,3 +180,14 @@ class ProjectBacklogDispatcher:
         self.is_running = False
         self.next_run_at = None
         logger.info("[Cron Dispatcher] Stopped.")
+
+    async def trigger_dispatch_now(self, delay_seconds: int = 5) -> Dict[str, Any]:
+        """
+        Non-blocking hook to schedule an immediate check_and_dispatch after an optional debounce delay.
+        """
+        if delay_seconds > 0:
+            logger.info(f"[Cron Dispatcher] Trigger dispatch requested. Waiting {delay_seconds}s for state to settle...")
+            await asyncio.sleep(delay_seconds)
+
+        logger.info("[Cron Dispatcher] Executing triggered auto-dispatch check.")
+        return await self.check_and_dispatch()
