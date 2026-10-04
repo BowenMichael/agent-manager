@@ -57,13 +57,6 @@ async def fetch_board_items_per_project() -> Dict[str, Dict[str, Any]]:
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         for bid in PROJECT_BOARD_IDS:
-            projects_data[bid] = {
-                "project_id": bid,
-                "board_title": bid,
-                "active_items": [],
-                "in_review_items": [],
-                "backlog_items": [],
-            }
             resp = await client.post(
                 "https://api.github.com/graphql",
                 json={"query": GRAPHQL_QUERY, "variables": {"projectId": bid}},
@@ -75,7 +68,6 @@ async def fetch_board_items_per_project() -> Dict[str, Dict[str, Any]]:
 
             node = resp.json().get("data", {}).get("node", {}) or {}
             board_title = node.get("title", bid)
-            projects_data[bid]["board_title"] = board_title
 
             for item in node.get("items", {}).get("nodes", []):
                 content = item.get("content") or {}
@@ -88,25 +80,38 @@ async def fetch_board_items_per_project() -> Dict[str, Dict[str, Any]]:
                 if not status_name or not content.get("number"):
                     continue
 
+                repo_name = (content.get("repository") or {}).get("nameWithOwner")
+                group_key = repo_name or bid
+                if group_key not in projects_data:
+                    projects_data[group_key] = {
+                        "project_id": group_key,
+                        "board_id": bid,
+                        "board_title": repo_name or board_title,
+                        "repo": repo_name,
+                        "active_items": [],
+                        "in_review_items": [],
+                        "backlog_items": [],
+                    }
+
                 item_data = {
                     "item_id": item["id"],
                     "project_id": bid,
                     "board_title": board_title,
                     "issue_number": content.get("number"),
                     "title": content.get("title"),
-                    "repo": (content.get("repository") or {}).get("nameWithOwner"),
+                    "repo": repo_name,
                     "status": status_name
                 }
 
                 s_lower = status_name.lower()
                 # Active agents are strictly 'In Progress' or 'Ready for Agent'
                 if "progress" in s_lower or "ready" in s_lower:
-                    projects_data[bid]["active_items"].append(item_data)
+                    projects_data[group_key]["active_items"].append(item_data)
                 elif "review" in s_lower:
                     # In Review agents do NOT count as running/active agents
-                    projects_data[bid]["in_review_items"].append(item_data)
+                    projects_data[group_key]["in_review_items"].append(item_data)
                 elif "backlog" in s_lower:
-                    projects_data[bid]["backlog_items"].append(item_data)
+                    projects_data[group_key]["backlog_items"].append(item_data)
 
     return projects_data
 
