@@ -714,10 +714,18 @@ class AgentRunnerManager:
                         delta = step.get("text_delta")
                         if delta:
                             accumulated_thought.append(delta)
-                            await self.broadcast("thought_delta", {"session_id": session_id, "delta": delta})
-                            recent_thought = "".join(accumulated_thought).strip()[-80:].replace("\n", " ")
-                            session.current_activity = f"Planning ({clean_model}): {recent_thought}..."
-                            await self.broadcast("session_updated", session.model_dump())
+                            await self.broadcast("thought_delta", {
+                                "session_id": session_id,
+                                "delta": delta,
+                                "model": clean_model
+                            })
+                            from datetime import datetime
+                            session.last_activity_at = datetime.utcnow().isoformat()
+                            session.is_stalled = False
+                            if len(accumulated_thought) % 12 == 1:
+                                recent_thought = "".join(accumulated_thought).strip()[-80:].replace("\n", " ")
+                                session.current_activity = f"Planning ({clean_model}): {recent_thought}..."
+                                await self.broadcast("session_updated", session.model_dump())
 
                     elif stype == "agent_response":
                         delta = step.get("text_delta")

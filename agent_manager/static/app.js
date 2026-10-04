@@ -232,6 +232,7 @@ function handleWsMessage(msg) {
         if (message.role === 'TOOL_CALL') targetSession.turn_count++;
       }
       if (activeSessionId === session_id) {
+        finalizeThoughtBubble();
         currentStreamingBubble = null;
         renderMessageItem(message);
         scrollToBottom();
@@ -244,6 +245,14 @@ function handleWsMessage(msg) {
 
     case 'settings_updated':
       if (typeof loadSettings === 'function') loadSettings();
+      break;
+
+    case 'thought_delta':
+      const { session_id: thoughtSid, delta: thoughtDelta, model: thoughtModel } = msg.data;
+      if (activeSessionId === thoughtSid) {
+        handleThoughtStream(thoughtDelta, thoughtModel);
+        scrollToBottom();
+      }
       break;
 
     case 'token_stream':
@@ -260,7 +269,60 @@ function handleWsMessage(msg) {
   }
 }
 
+let currentThoughtBubble = null;
+let thoughtStartTime = null;
+let thoughtTimerInterval = null;
+
+function handleThoughtStream(delta, model = 'Gemini 3.1 Pro') {
+  if (!currentThoughtBubble) {
+    thoughtStartTime = Date.now();
+    currentThoughtBubble = document.createElement('div');
+    currentThoughtBubble.className = 'msg-bubble msg-thought-live';
+    currentThoughtBubble.innerHTML = `
+      <div class="thought-header">
+        <span class="thought-icon pulse-glow">🧠</span>
+        <span class="thought-label">${escapeHtml(model).toUpperCase()} (LIVE REASONING)</span>
+        <span class="thought-timer" id="live-thought-timer">Thinking: 1s</span>
+      </div>
+      <div class="thought-body live-thought-text"></div>
+    `;
+    transcriptStream.appendChild(currentThoughtBubble);
+
+    if (thoughtTimerInterval) clearInterval(thoughtTimerInterval);
+    thoughtTimerInterval = setInterval(() => {
+      const timerEl = currentThoughtBubble ? currentThoughtBubble.querySelector('#live-thought-timer') : null;
+      if (timerEl && thoughtStartTime) {
+        const secs = Math.max(1, Math.floor((Date.now() - thoughtStartTime) / 1000));
+        timerEl.textContent = `Thinking: ${secs}s`;
+      }
+    }, 1000);
+  }
+
+  const textEl = currentThoughtBubble.querySelector('.live-thought-text');
+  if (textEl) {
+    textEl.textContent += delta;
+  }
+}
+
+function finalizeThoughtBubble() {
+  if (thoughtTimerInterval) {
+    clearInterval(thoughtTimerInterval);
+    thoughtTimerInterval = null;
+  }
+  if (currentThoughtBubble) {
+    const timer = currentThoughtBubble.querySelector('.thought-timer');
+    if (timer && thoughtStartTime) {
+      const elapsed = Math.max(1, Math.round((Date.now() - thoughtStartTime) / 1000));
+      timer.textContent = `Completed in ${elapsed}s`;
+    }
+    currentThoughtBubble.classList.remove('msg-thought-live');
+    currentThoughtBubble.classList.add('msg-thought');
+    currentThoughtBubble = null;
+  }
+}
+
 function handleTokenStream(token) {
+  finalizeThoughtBubble();
   if (!currentStreamingBubble) {
     currentStreamingBubble = document.createElement('div');
     currentStreamingBubble.className = 'msg-bubble msg-agent';
@@ -348,6 +410,12 @@ function renderSessionsList() {
 
       </div>
       <div class="card-title">${escapeHtml(session.title)}</div>
+      ${session.status === 'RUNNING' ? `
+        <div class="card-live-activity" title="${escapeHtml(session.current_activity || 'Reasoning & executing...')}">
+          <span class="pulse-indicator-purple"></span>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(session.current_activity || 'Reasoning & executing...')}</span>
+        </div>
+      ` : ''}
       <div class="card-bottom">
         <span>${session.issue_number ? '#' + session.issue_number : 'ad-hoc'}</span>
         <span>${session.turn_count || 0} turns • ${session.token_count || 0} tok</span>
@@ -405,7 +473,7 @@ function updateActiveSessionView(session) {
     } else if (session.status === 'RUNNING') {
       agentActivityBar.classList.remove('stalled');
       activitySpinner.style.display = 'inline-block';
-      activityText.textContent = session.current_activity || '🧠 Agent thinking & executing...';
+      activityText.innerHTML = `<span class="pulse-indicator-purple" style="margin-right: 6px;"></span><strong>${escapeHtml(session.model || 'Agent')}:</strong> ${escapeHtml(session.current_activity || 'Reasoning & executing...')}`;
       if (btnInterrupt) btnInterrupt.classList.add('hidden');
     } else if (session.status === 'IN_REVIEW') {
       agentActivityBar.classList.remove('stalled');
