@@ -1,0 +1,61 @@
+name: Backend CI & PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'agent_manager/**'
+      - 'tests/**'
+      - 'main.py'
+      - 'requirements.txt'
+      - '.github/workflows/backend-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'agent_manager/**'
+      - 'tests/**'
+      - 'main.py'
+      - 'requirements.txt'
+      - '.github/workflows/backend-ci.yml'
+
+jobs:
+  backend-checks:
+    name: Lint, Type Check & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio flake8
+
+      - name: Lint with flake8
+        run: |
+          echo "Running flake8 lint check..."
+          flake8 agent_manager tests --count --select=E9,F63,F7,F82 --show-source --statistics > flake8_run.log 2>&1 || {
+            echo "Flake8 check failed. Last 40 lines of log:"
+            tail -n 40 flake8_run.log
+            exit 1
+          }
+          rm -f flake8_run.log
+
+      - name: Run Backend Unit Tests (with Log Suppression)
+        run: |
+          echo "Running backend test suite with command log suppression..."
+          python -m pytest tests/ > test_run.log 2>&1 || {
+            echo "❌ Tests failed! Showing last 50 lines of test log:"
+            tail -n 50 test_run.log
+            exit 1
+          }
+          echo "✅ All tests passed successfully."
+          rm -f test_run.log

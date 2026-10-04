@@ -1,0 +1,40 @@
+name: Render Deploy Trigger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'agent_manager/**'
+      - 'main.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'render.yaml'
+      - '.github/workflows/render-deploy.yml'
+
+jobs:
+  trigger-render-deploy:
+    name: Trigger Render Deploy Hook
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Webhook
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "⚠️ RENDER_DEPLOY_HOOK_URL secret is not set. Skipping Render deployment trigger."
+            exit 0
+          fi
+
+          echo "🚀 Triggering Render Deploy Hook..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$RENDER_DEPLOY_HOOK_URL")
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1)
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "✅ Render deployment successfully triggered (HTTP $HTTP_STATUS)."
+          else
+            echo "❌ Render deploy hook failed with HTTP status: $HTTP_STATUS"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
