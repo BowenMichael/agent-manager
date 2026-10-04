@@ -145,7 +145,7 @@ class LocalGitWatcher:
                     json={
                         "query": mutation,
                         "variables": {
-                            "projectId": project_id,
+                            "projectId": pid,
                             "itemId": item_id,
                             "fieldId": board["field_id"],
                             "optionId": option_id
@@ -153,7 +153,14 @@ class LocalGitWatcher:
                     },
                     headers=headers
                 )
-                return resp.status_code == 200
+                if resp.status_code != 200:
+                    logger.error("GraphQL mutation failed with status %d: %s", resp.status_code, resp.text)
+                    return False
+                res_data = resp.json()
+                if "errors" in res_data:
+                    logger.error("GraphQL mutation returned errors: %s", res_data["errors"])
+                    return False
+                return bool(res_data.get("data", {}).get("updateProjectV2ItemFieldValue"))
         except Exception as e:
             logger.error("Failed to update item status: %s", e)
             return False
