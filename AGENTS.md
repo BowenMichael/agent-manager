@@ -44,6 +44,9 @@ When picking up an issue from GitHub:
      2. [Step 2: Core changes, unit tests, and validation]
      3. [Step 3: Verification, demo recording, and PR creation]
    - **Budget Guardrail**: Max 15 tool execution turns before pause & review.
+
+   ---
+   *Posted automatically by Agent Manager | Worktree: `.worktrees/issue-<number>`*
    ```
 
 ### C. Issue & Project Board Synchronization (Anti-Duplication Protocol)
@@ -90,6 +93,9 @@ When a threshold or circuit breaker is reached, execution is halted automaticall
    - **Remaining Work**: [Exact items needed to reach acceptance criteria]
    - **Cost / Complexity Driver**: [Explain why token consumption or turn count is high]
    - **Proposed Next Action**: [Option A: Approve 15 more turns to finish; Option B: Narrow scope; Option C: Human intervention]
+
+   ---
+   *Posted automatically by Agent Manager | Worktree: `.worktrees/issue-<number>`*
    ```
 2. **Await User Approval**:
    - The agent MUST NOT take further code modification actions until the user explicitly responds with approval to proceed via the Agent Manager UI or GitHub comment.
