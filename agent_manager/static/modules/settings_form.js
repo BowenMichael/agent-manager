@@ -6,18 +6,10 @@ function initSettingsEvents() {
   const btnCloseSettings = document.getElementById('btn-close-settings');
   const btnCancelSettings = document.getElementById('btn-cancel-settings');
   const btnSaveSettings = document.getElementById('btn-save-settings');
-  const btnBannerConfigure = document.getElementById('btn-banner-configure');
   const inputGeminiKey = document.getElementById('setting-gemini-key');
 
   if (btnSettingsModal) {
     btnSettingsModal.addEventListener('click', () => {
-      if (modalSettings) modalSettings.classList.remove('hidden');
-      loadSettings();
-    });
-  }
-
-  if (btnBannerConfigure) {
-    btnBannerConfigure.addEventListener('click', () => {
       if (modalSettings) modalSettings.classList.remove('hidden');
       loadSettings();
     });
