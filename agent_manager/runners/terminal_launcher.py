@@ -1,3 +1,4 @@
+import sys
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -7,7 +8,15 @@ from agent_manager.config import AGY_CLI_PATH
 subprocess_create_new_console = 0x00000010
 
 
-async def launch_desktop_terminal(manager, session, issue_num: int, clean_model: str, clean_effort: str, cli_model_args: list, cwd_dir: str, target_prompt: str, is_continuation: bool):
+async def launch_desktop_terminal(manager, session, issue_num: int, clean_model: str, clean_effort: str, cli_model_args: list, cwd_dir: str, target_prompt: str, is_continuation: bool) -> bool:
+    if sys.platform != "win32":
+        await manager._append_message(
+            session.session_id,
+            MessageRole.SYSTEM,
+            "⚠️ [Interactive Desktop Terminal] Terminal mode is only supported on Windows. Falling back to headless web stream mode."
+        )
+        return False
+
     title_str = f"Antigravity CLI (agy) - Issue #{issue_num} [{clean_model} / {clean_effort}]"
     launcher_path = Path(cwd_dir) / ".agy_terminal_launch.ps1"
     safe_prompt = target_prompt.replace('@"', '`@"').replace('"@', '`"@')
@@ -44,3 +53,4 @@ async def launch_desktop_terminal(manager, session, issue_num: int, clean_model:
     session.status = AgentStatus.IN_REVIEW
     manager._save()
     await manager.broadcast("session_updated", session.model_dump())
+    return True

@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -19,7 +20,9 @@ PORT = int(_saved_settings.get("PORT") or os.getenv("PORT", "8000"))
 HOST = _saved_settings.get("HOST") or os.getenv("HOST", "0.0.0.0")
 GITHUB_WEBHOOK_SECRET = _saved_settings.get("GITHUB_WEBHOOK_SECRET") or os.getenv("GITHUB_WEBHOOK_SECRET", "")
 GEMINI_API_KEY = _saved_settings.get("gemini_api_key") or _saved_settings.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-WORKSPACE_BASE = Path(_saved_settings.get("WORKSPACE_BASE") or os.getenv("WORKSPACE_BASE", "e:/~Michael Bowen/Projects"))
+
+_default_workspace = "e:/~Michael Bowen/Projects" if sys.platform == "win32" else "/app/workspaces"
+WORKSPACE_BASE = Path(_saved_settings.get("WORKSPACE_BASE") or os.getenv("WORKSPACE_BASE", _default_workspace))
 DEFAULT_REPO = _saved_settings.get("default_repo") or _saved_settings.get("DEFAULT_REPO") or os.getenv("DEFAULT_REPO", "BowenMichael/f1-frontend")
 PROJECT_BOARD_ID = _saved_settings.get("project_board_id") or _saved_settings.get("PROJECT_BOARD_ID") or os.getenv("PROJECT_BOARD_ID", "PVT_kwHOAgkA3s4Blmhh")
 POLL_INTERVAL_SECONDS = int(_saved_settings.get("poll_interval_seconds") or _saved_settings.get("POLL_INTERVAL_SECONDS") or os.getenv("POLL_INTERVAL_SECONDS", "15"))
@@ -42,10 +45,12 @@ if not GITHUB_PERSONAL_ACCESS_TOKEN:
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-ANTIGRAVITY_IDE_CLI = Path(r"C:\Users\tv\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd")
-SUBSCRIPTION_MODE = os.getenv("SUBSCRIPTION_MODE", "true").lower() in ("true", "1")
-
-AGY_CLI_PATH = Path(os.environ.get("LOCALAPPDATA", r"C:\Users\tv\AppData\Local")) / "agy" / "bin" / "agy.exe"
+if sys.platform == "win32":
+    ANTIGRAVITY_IDE_CLI = Path(r"C:\Users\tv\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd")
+    AGY_CLI_PATH = Path(os.environ.get("LOCALAPPDATA", r"C:\Users\tv\AppData\Local")) / "agy" / "bin" / "agy.exe"
+else:
+    ANTIGRAVITY_IDE_CLI = Path(os.getenv("ANTIGRAVITY_IDE_CLI", "/usr/local/bin/antigravity-ide"))
+    AGY_CLI_PATH = Path(os.getenv("AGY_CLI_PATH", "/usr/local/bin/agy"))
 
 # Antigravity CLI Execution Mode: 'web_stream' (Default) or 'terminal' (Desktop Window)
 AGY_MODE = (_saved_settings.get("agy_mode") or os.getenv("AGY_MODE", "web_stream")).lower()
