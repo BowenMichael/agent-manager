@@ -260,6 +260,22 @@ function initActionButtons() {
       if (typeof window.showCronView === 'function') window.showCronView();
     });
   }
+
+  const btnHeaderTelemetry = document.getElementById('btn-header-telemetry');
+  if (btnHeaderTelemetry) {
+    btnHeaderTelemetry.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.showTelemetryView === 'function') window.showTelemetryView();
+    });
+  }
+
+  const statPillTokens = document.getElementById('stat-pill-tokens');
+  if (statPillTokens) {
+    statPillTokens.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (typeof window.showTelemetryView === 'function') window.showTelemetryView();
+    });
+  }
 }
 
 window.archiveAgent = archiveAgent;

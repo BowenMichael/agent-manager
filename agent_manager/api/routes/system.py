@@ -11,6 +11,13 @@ async def get_token_telemetry():
     return get_timescale_metrics()
 
 
+@router.get("/telemetry/reports")
+async def get_telemetry_reports():
+    """Returns agent execution performance metrics and actionable optimization reports."""
+    from agent_manager.services.telemetry_service import generate_optimization_reports
+    return generate_optimization_reports()
+
+
 @router.get("/cron/status")
 async def get_cron_status():
     return {

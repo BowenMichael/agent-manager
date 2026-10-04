@@ -186,7 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize sub-modules
   if (typeof window.initSettingsEvents === 'function') window.initSettingsEvents();
-  if (typeof window.initTelemetryEvents === 'function') window.initTelemetryEvents();
   if (typeof window.initModals === 'function') window.initModals();
   if (typeof window.loadSettings === 'function') window.loadSettings();
 
