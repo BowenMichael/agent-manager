@@ -3,6 +3,7 @@ import logging
 import httpx
 from typing import Optional, Set, Dict
 
+from agent_manager import config
 from agent_manager.config import (
     GITHUB_PERSONAL_ACCESS_TOKEN, PROJECT_BOARD_ID, PROJECT_BOARD_IDS,
     DEFAULT_REPO, POLL_INTERVAL_SECONDS
