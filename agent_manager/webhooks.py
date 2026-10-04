@@ -9,6 +9,7 @@ from agent_manager.config import GITHUB_WEBHOOK_SECRET, DEFAULT_REPO
 from agent_manager.models import SpawnRequest
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.poller import LocalGitWatcher
+from agent_manager.formatters.comments import is_agent_comment
 
 logger = logging.getLogger("agent_manager.webhooks")
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -53,6 +54,7 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
                 f"- Work inside the designated branch and isolated worktree.\n"
                 f"- Inspect existing code patterns before modifying.\n"
                 f"- Follow AGENTS.md rules and keep documentation updated.\n"
+                f"- STANDARDIZED AGENT COMMENT RULE: When posting comments on GitHub issues/PRs, you MUST start with a standardized header badge (e.g., `🤖 **Agent Takeover: Development Started**` or `🤖 **Autonomous Agent**`) and include the disclaimer footer: `\\n\\n---\\n*Posted automatically by Agent Manager | Worktree: .worktrees/issue-{issue_number}*`.\n"
                 f"- When done, commit changes, open a pull request, and summarize your work."
             )
             req = SpawnRequest(
@@ -107,7 +109,7 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
             body = comment.get("body", "")
 
             # Ignore comments posted by the agent itself
-            if body.startswith("🤖 **Agent") or body.startswith("🚀 **Task Complete"):
+            if is_agent_comment(body):
                 return {"status": "ignored", "reason": "agent_self_comment"}
 
             # Look for active/existing session matching this issue number (most recent first)

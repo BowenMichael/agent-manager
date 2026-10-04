@@ -22,6 +22,13 @@ from agent_manager.storage import save_sessions, load_sessions
 from agent_manager.github import post_issue_comment
 from agent_manager.utils.command_formatter import format_command_output
 from agent_manager.utils.workspace import find_local_workspace
+from agent_manager.formatters.comments import (
+    format_agent_comment,
+    format_agent_metadata_footer,
+    BADGE_AGENT_PAUSED,
+    BADGE_AGENT_UPDATE,
+    FOOTER_SIGNATURE
+)
 
 logger = logging.getLogger("agent_manager.runner")
 
@@ -1154,13 +1161,20 @@ class AgentRunnerManager:
 
                                         if session.issue_number and session.repo:
                                             try:
-                                                pause_comment = (
+                                                pause_body = (
                                                     f"⚠️ **Task Paused: Circuit Breaker Triggered**\n\n"
                                                     f"### 🛑 Repetitive Tool Loop Detected\n"
                                                     f"- **Tool**: `{tname}` called {session.consecutive_duplicate_tool_count} consecutive times with identical arguments.\n"
                                                     f"- **Safeguard**: Execution halted immediately to prevent runaway token consumption.\n"
                                                     f"- **Worktree**: `{session.worktree_path or cwd_dir}`\n"
                                                     f"- **Status**: Paused awaiting developer review or resumption."
+                                                )
+                                                pause_comment = format_agent_comment(
+                                                    body=pause_body,
+                                                    header=BADGE_AGENT_PAUSED,
+                                                    session_id=session.session_id,
+                                                    worktree_path=session.worktree_path or cwd_dir,
+                                                    git_branch=session.git_branch
                                                 )
                                                 comment_res = await post_issue_comment(session.repo, session.issue_number, pause_comment)
                                                 if comment_res and "id" in comment_res:
@@ -1234,7 +1248,7 @@ class AgentRunnerManager:
 
                                         if session.issue_number and session.repo:
                                             try:
-                                                pause_comment = (
+                                                pause_body = (
                                                     f"⚠️ **Task Paused: Token / Complexity Budget Threshold Reached**\n\n"
                                                     f"### 📊 Task Insights\n"
                                                     f"- **Turns Completed**: {session.turn_count} / {max_turns_limit}\n"
@@ -1242,6 +1256,13 @@ class AgentRunnerManager:
                                                     f"- **Worktree**: `{session.worktree_path or cwd_dir}`\n"
                                                     f"- **Status**: Paused per AGENTS.md Turn Limit Guardrail (Max {max_turns_limit} turns).\n"
                                                     f"- **Proposed Next Action**: Review work in worktree and approve continuation from Agent Manager UI or add instructions."
+                                                )
+                                                pause_comment = format_agent_comment(
+                                                    body=pause_body,
+                                                    header=BADGE_AGENT_PAUSED,
+                                                    session_id=session.session_id,
+                                                    worktree_path=session.worktree_path or cwd_dir,
+                                                    git_branch=session.git_branch
                                                 )
                                                 comment_res = await post_issue_comment(session.repo, session.issue_number, pause_comment)
                                                 if comment_res and "id" in comment_res:
@@ -1307,9 +1328,12 @@ class AgentRunnerManager:
                             # Automatically post agent response as a comment on the GitHub issue
                             if session.issue_number and session.repo:
                                 try:
-                                    comment_content = (
-                                        f"🤖 **Agent Update**\n\n"
-                                        f"{final_resp.strip()}"
+                                    comment_content = format_agent_comment(
+                                        body=final_resp.strip(),
+                                        header=BADGE_AGENT_UPDATE,
+                                        session_id=session.session_id,
+                                        worktree_path=session.worktree_path,
+                                        git_branch=session.git_branch
                                     )
                                     comment_res = await post_issue_comment(session.repo, session.issue_number, comment_content)
                                     if comment_res and "id" in comment_res:

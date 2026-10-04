@@ -10,6 +10,7 @@ from agent_manager.config import (
 )
 from agent_manager.models import SpawnRequest, AgentStatus
 from agent_manager.runner import AgentRunnerManager
+from agent_manager.formatters.comments import is_agent_comment
 
 logger = logging.getLogger("agent_manager.poller")
 
@@ -298,8 +299,7 @@ class LocalGitWatcher:
                     new_comments = [
                         c for c in comments
                         if str(c.get("id")) not in seen_ids
-                        and not (c.get("body") or "").startswith("🤖 **Agent")
-                        and not (c.get("body") or "").startswith("🚀 **Task Complete")
+                        and not is_agent_comment(c.get("body"))
                     ]
 
                     if new_comments:
@@ -404,6 +404,7 @@ class LocalGitWatcher:
                                 f"- ANTI-MONOLITH RULE: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files (models, services, utils, components). When modifying large files (>300 lines), extract new functions into separate helper files.\n"
                                 f"{('- CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding ' + str(getattr(config, 'MAX_TURNS_PER_SESSION', 15)) + ' turns will immediately halt execution.\n') if getattr(config, 'GUARDRAILS_ENABLED', True) else '- SAFETY GUARDRAILS DISABLED: Unrestricted execution mode active per developer settings.\n'}"
                                 f"- Follow AGENTS.md rules and keep documentation updated.\n"
+                                f"- STANDARDIZED AGENT COMMENT RULE: When posting comments on GitHub issues/PRs, you MUST start with a standardized header badge (e.g., `🤖 **Agent Takeover: Development Started**` or `🤖 **Autonomous Agent**`) and include the disclaimer footer: `\\n\\n---\\n*Posted automatically by Agent Manager | Worktree: .worktrees/issue-{issue_num}*`.\n"
                                 f"- CRITICAL RULE: Do NOT add, remove, or modify GitHub issue labels/tags. Status transitions are managed purely on the GitHub Project Board columns.\n"
                                 f"- When done, commit changes, open a pull request, and summarize your work."
                             )

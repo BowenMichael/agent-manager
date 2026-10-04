@@ -12,6 +12,10 @@
   <link rel="stylesheet" href="/static/components/command-output.css">
   <link rel="stylesheet" href="/static/components/diff-viewer.css">
   <link rel="stylesheet" href="/static/components/file-viewer-modal.css">
+  <link rel="stylesheet" href="/static/components/agent-tabs.css">
+  <link rel="stylesheet" href="/static/components/git-tree-viewer.css">
+  <link rel="stylesheet" href="/static/components/issue-viewer.css">
+  <link rel="stylesheet" href="/static/components/agent-summary-overview.css">
 </head>
 <body>
   <div class="app-layout">
@@ -92,9 +96,19 @@
             <h2 id="sidebar-title">Active Sessions</h2>
             <span class="badge" id="sessions-count">0</span>
           </div>
-          <button class="btn-icon" id="btn-sync-board" title="Sync with GitHub Project Board">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-          </button>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button class="btn-icon" id="btn-show-dashboard" title="View Multi-Agent Dashboard">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+              </svg>
+            </button>
+            <button class="btn-icon" id="btn-sync-board" title="Sync with GitHub Project Board">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+            </button>
+          </div>
         </div>
 
         <div class="sidebar-filters">
@@ -137,6 +151,8 @@
 
       <!-- Center / Right Panel: Live Agent Console & Interactive Workspace -->
       <section class="console-panel" id="console-panel">
+        <agent-summary-overview id="global-dashboard" class="hidden"></agent-summary-overview>
+
         <div class="console-empty" id="console-empty">
           <div class="console-empty-card">
             <div class="empty-icon">⚡</div>
@@ -168,6 +184,10 @@
               </div>
               <div class="session-submeta">
                 <span class="submeta-item" id="current-repo">BowenMichael/f1-frontend</span>
+                <span class="submeta-divider hidden" id="current-issue-divider">•</span>
+                <a href="#" target="_blank" rel="noopener noreferrer" class="submeta-item hidden" id="current-issue-link" style="color: var(--accent-cyan); text-decoration: none;">Issue ↗</a>
+                <span class="submeta-divider hidden" id="current-pr-divider">•</span>
+                <a href="#" target="_blank" rel="noopener noreferrer" class="submeta-item hidden" id="current-pr-link" style="color: #c4b5fd; text-decoration: none;">PR ↗</a>
                 <span class="submeta-divider">•</span>
                 <span class="submeta-item font-mono" id="current-branch">feat/issue-6</span>
                 <span class="submeta-divider">•</span>
@@ -282,9 +302,41 @@
 
             <!-- Right Pane: Live Agent Activity & Mission Control Overview -->
             <div class="agent-overview-pane" id="agent-overview-pane">
-              <!-- Current Activity Highlight -->
-              <div class="overview-box current-activity-box">
-                <div class="overview-box-header">
+              <!-- Tabbed Navigation Header -->
+              <div class="agent-tabs-header">
+                <button class="agent-tab-btn active" id="tab-btn-overview" data-target="tab-pane-overview">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                  </svg>
+                  Overview
+                </button>
+                <button class="agent-tab-btn" id="tab-btn-gittree" data-target="tab-pane-gittree">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="6" y1="3" x2="6" y2="15"></line>
+                    <circle cx="18" cy="6" r="3"></circle>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <path d="M18 9a9 9 0 0 1-9 9"></path>
+                  </svg>
+                  Git Tree
+                </button>
+                <button class="agent-tab-btn" id="tab-btn-issue" data-target="tab-pane-issue">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  Issue
+                </button>
+              </div>
+
+              <!-- Tab Pane: Overview (Default) -->
+              <div class="agent-tab-pane" id="tab-pane-overview">
+                <!-- Current Activity Highlight -->
+                <div class="overview-box current-activity-box">
+                  <div class="overview-box-header">
                   <span class="overview-label">CURRENT ACTIVITY</span>
                   <span class="badge-activity-running" id="overview-badge">EXECUTING</span>
                 </div>
@@ -431,9 +483,20 @@
                 </ul>
               </div>
             </div>
+
+            <!-- Tab Pane: Git Tree -->
+            <div class="agent-tab-pane hidden" id="tab-pane-gittree">
+              <git-tree-viewer id="active-git-tree-viewer"></git-tree-viewer>
+            </div>
+
+            <!-- Tab Pane: Issue Context -->
+            <div class="agent-tab-pane hidden" id="tab-pane-issue">
+              <issue-viewer id="active-issue-viewer"></issue-viewer>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
     </main>
 
     <!-- Modal: Simulate GitHub Webhook -->
@@ -843,6 +906,12 @@
   <script src="/static/components/command-output.js"></script>
   <script src="/static/components/diff-viewer.js"></script>
   <script src="/static/components/file-viewer-modal.js"></script>
+  <script src="/static/components/agent-tabs-controller.js"></script>
+  <script src="/static/components/git-tree-viewer.js"></script>
+  <script src="/static/components/issue-viewer.js"></script>
+  <script src="/static/components/agent-summary-overview.js"></script>
+  <script src="/static/utils/api-client.js"></script>
+  <script src="/static/utils/github-links.js"></script>
   <script src="/static/app.js"></script>
   <div class="toast-stack" id="toast-stack"></div>
 </body>
