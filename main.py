@@ -23,7 +23,12 @@ def main():
     except UnicodeEncodeError:
         print("AGENT MANAGER running on http://{}:{}".format(args.host, args.port))
 
-    uvicorn.run("agent_manager.server:app", host=args.host, port=args.port, reload=args.reload)
+    run_kwargs = {"host": args.host, "port": args.port, "reload": args.reload}
+    if args.reload:
+        run_kwargs["reload_excludes"] = [".env", "data/*", "*.json", "*.log", ".worktrees/*", "*.tmp*"]
+        run_kwargs["reload_dirs"] = ["agent_manager"]
+
+    uvicorn.run("agent_manager.server:app", **run_kwargs)
 
 if __name__ == "__main__":
     main()

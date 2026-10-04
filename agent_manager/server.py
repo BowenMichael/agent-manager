@@ -5,10 +5,10 @@ from typing import Optional
 import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 import agent_manager.config as config
 from agent_manager.config import STATIC_DIR
@@ -23,6 +23,7 @@ from agent_manager.storage import save_settings, load_settings
 from agent_manager.webhooks import router as webhooks_router, process_github_event
 from agent_manager.api.files import router as files_router
 from agent_manager.api.context import router as context_router
+from agent_manager.api.settings import router as settings_router
 from agent_manager.poller import LocalGitWatcher
 
 
@@ -69,245 +70,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled exception processing {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": f"Internal Server Error: {str(exc)}", "error": str(exc)},
+    )
+
 runner = AgentRunnerManager()
 app.include_router(webhooks_router)
 app.include_router(files_router)
 app.include_router(context_router)
-
-# REST Endpoints
-@app.get("/api/settings")
-async def get_settings():
-    import agent_manager.config as config
-    key = config.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
-    masked_key = (key[:6] + "..." + key[-4:]) if len(key) > 10 else ("Set" if key else "")
-    
-    # Check Antigravity CLI quota status
-    quota_status = {
-        "subscription_active": True,
-        "subscription_quota_reached": False,
-        "quota_percent": 0.0,
-        "reset_window": "Active / Fresh Quota",
-        "current_active_model": config.DEFAULT_MODEL,
-        "notice": "Google Antigravity Subscription is active and fully authenticated with zero API key required."
-    }
-
-    return {
-        "has_gemini_api_key": bool(key),
-        "masked_gemini_api_key": masked_key,
-        "default_repo": config.DEFAULT_REPO,
-        "project_board_id": config.PROJECT_BOARD_ID,
-        "agy_mode": getattr(config, "AGY_MODE", "terminal"),
-        "agy_cli_installed": config.AGY_CLI_PATH.exists(),
-        "agy_cli_path": str(config.AGY_CLI_PATH),
-        "default_model": getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash"),
-        "default_effort": getattr(config, "DEFAULT_EFFORT", "high"),
-        "allow_overage_credits": config.get_cli_overage_credits(),
-        "available_efforts": getattr(config, "AVAILABLE_EFFORT_LEVELS", []),
-        "available_models": getattr(config, "AVAILABLE_MODELS", []),
-        "max_session_tokens": getattr(config, "MAX_SESSION_TOKENS", 150000),
-        "compact_completed_chat": getattr(config, "COMPACT_COMPLETED_CHAT", True),
-        "is_server": getattr(config, "IS_SERVER", False),
-        "cli_idle_timeout_minutes": getattr(config, "CLI_IDLE_TIMEOUT_MINUTES", 30),
-        "workflow_pipeline_enabled": getattr(config, "WORKFLOW_PIPELINE_ENABLED", False),
-        "guardrails_enabled": getattr(config, "GUARDRAILS_ENABLED", True),
-        "auto_merge_enabled": getattr(config, "AUTO_MERGE_ENABLED", False),
-        "pipeline_summary_model": getattr(config, "PIPELINE_SUMMARY_MODEL", "gemini-3.8-flash"),
-        "pipeline_summary_effort": getattr(config, "PIPELINE_SUMMARY_EFFORT", "low"),
-        "pipeline_planning_model": getattr(config, "PIPELINE_PLANNING_MODEL", "gemini-3.1-pro"),
-        "pipeline_planning_effort": getattr(config, "PIPELINE_PLANNING_EFFORT", "high"),
-        "pipeline_implementation_model": getattr(config, "PIPELINE_IMPLEMENTATION_MODEL", "gemini-3.8-flash"),
-        "pipeline_implementation_effort": getattr(config, "PIPELINE_IMPLEMENTATION_EFFORT", "low"),
-        "quota_status": quota_status
-    }
-
-@app.post("/api/settings")
-async def update_settings(req: SettingsUpdateRequest):
-    import agent_manager.config as config
-    env_file = Path(__file__).resolve().parent.parent / ".env"
-    
-    lines = []
-    if env_file.exists():
-        try:
-            lines = env_file.read_text(encoding="utf-8").splitlines()
-        except Exception as e:
-            logger.warning(f"Could not read .env file: {e}")
-
-    def set_env(key_name, val):
-        nonlocal lines
-        found = False
-        new_lines = []
-        for line in lines:
-            if line.startswith(f"{key_name}="):
-                new_lines.append(f"{key_name}={val}")
-                found = True
-            else:
-                new_lines.append(line)
-        if not found:
-            new_lines.append(f"{key_name}={val}")
-        lines = new_lines
-
-    current_persisted = load_settings()
-
-    if req.default_repo:
-        repo_val = req.default_repo.strip()
-        config.DEFAULT_REPO = repo_val
-        os.environ["DEFAULT_REPO"] = repo_val
-        set_env("DEFAULT_REPO", repo_val)
-        current_persisted["default_repo"] = repo_val
-
-    effort_val = req.default_effort or req.effort_level
-    if effort_val:
-        eff_val = effort_val.strip().lower()
-        config.DEFAULT_EFFORT = eff_val
-        os.environ["DEFAULT_EFFORT"] = eff_val
-        set_env("DEFAULT_EFFORT", eff_val)
-        current_persisted["effort_level"] = eff_val
-        current_persisted["default_effort"] = eff_val
-
-    if req.default_model:
-        model_val = req.default_model.strip()
-        config.DEFAULT_MODEL = model_val
-        os.environ["DEFAULT_MODEL"] = model_val
-        set_env("DEFAULT_MODEL", model_val)
-        current_persisted["default_model"] = model_val
-
-    if req.allow_overage_credits is not None:
-        config.set_cli_overage_credits(req.allow_overage_credits)
-        set_env("ALLOW_OVERAGE_CREDITS", str(req.allow_overage_credits).lower())
-        current_persisted["allow_overage_credits"] = req.allow_overage_credits
-
-    if req.max_session_tokens:
-        tok_val = int(req.max_session_tokens)
-        config.MAX_SESSION_TOKENS = tok_val
-        os.environ["MAX_SESSION_TOKENS"] = str(tok_val)
-        set_env("MAX_SESSION_TOKENS", str(tok_val))
-        current_persisted["max_session_tokens"] = tok_val
-
-    if req.compact_completed_chat is not None:
-        config.COMPACT_COMPLETED_CHAT = req.compact_completed_chat
-        os.environ["COMPACT_COMPLETED_CHAT"] = str(req.compact_completed_chat).lower()
-        set_env("COMPACT_COMPLETED_CHAT", str(req.compact_completed_chat).lower())
-
-    if req.agy_mode is not None:
-        mode_val = req.agy_mode.strip().lower()
-        if mode_val in ("terminal", "web_stream"):
-            config.AGY_MODE = mode_val
-            os.environ["AGY_MODE"] = mode_val
-            set_env("AGY_MODE", mode_val)
-            current_persisted["agy_mode"] = mode_val
-
-    if req.gemini_api_key is not None:
-        key_val = req.gemini_api_key.strip()
-        config.GEMINI_API_KEY = key_val
-        os.environ["GEMINI_API_KEY"] = key_val
-        set_env("GEMINI_API_KEY", key_val)
-        current_persisted["gemini_api_key"] = key_val
-
-    if req.is_server is not None:
-        config.IS_SERVER = bool(req.is_server)
-        os.environ["IS_SERVER"] = str(req.is_server).lower()
-        set_env("IS_SERVER", str(req.is_server).lower())
-        current_persisted["is_server"] = bool(req.is_server)
-
-    if req.cli_idle_timeout_minutes is not None:
-        timeout_val = int(req.cli_idle_timeout_minutes)
-        config.CLI_IDLE_TIMEOUT_MINUTES = timeout_val
-        os.environ["CLI_IDLE_TIMEOUT_MINUTES"] = str(timeout_val)
-        set_env("CLI_IDLE_TIMEOUT_MINUTES", str(timeout_val))
-        current_persisted["cli_idle_timeout_minutes"] = timeout_val
-
-    if req.workflow_pipeline_enabled is not None:
-        config.WORKFLOW_PIPELINE_ENABLED = bool(req.workflow_pipeline_enabled)
-        os.environ["WORKFLOW_PIPELINE_ENABLED"] = str(req.workflow_pipeline_enabled).lower()
-        set_env("WORKFLOW_PIPELINE_ENABLED", str(req.workflow_pipeline_enabled).lower())
-        current_persisted["workflow_pipeline_enabled"] = bool(req.workflow_pipeline_enabled)
-
-    if req.guardrails_enabled is not None:
-        val = bool(req.guardrails_enabled)
-        config.GUARDRAILS_ENABLED = val
-        os.environ["GUARDRAILS_ENABLED"] = str(val).lower()
-        set_env("GUARDRAILS_ENABLED", str(val).lower())
-        current_persisted["guardrails_enabled"] = val
-
-    if req.auto_merge_enabled is not None:
-        val = bool(req.auto_merge_enabled)
-        config.AUTO_MERGE_ENABLED = val
-        os.environ["AUTO_MERGE_ENABLED"] = str(val).lower()
-        set_env("AUTO_MERGE_ENABLED", str(val).lower())
-        current_persisted["auto_merge_enabled"] = val
-
-    if req.pipeline_summary_model:
-        val = req.pipeline_summary_model.strip()
-        config.PIPELINE_SUMMARY_MODEL = val
-        os.environ["PIPELINE_SUMMARY_MODEL"] = val
-        set_env("PIPELINE_SUMMARY_MODEL", val)
-        current_persisted["pipeline_summary_model"] = val
-
-    if req.pipeline_summary_effort:
-        val = req.pipeline_summary_effort.strip().lower()
-        config.PIPELINE_SUMMARY_EFFORT = val
-        os.environ["PIPELINE_SUMMARY_EFFORT"] = val
-        set_env("PIPELINE_SUMMARY_EFFORT", val)
-        current_persisted["pipeline_summary_effort"] = val
-
-    if req.pipeline_planning_model:
-        val = req.pipeline_planning_model.strip()
-        config.PIPELINE_PLANNING_MODEL = val
-        os.environ["PIPELINE_PLANNING_MODEL"] = val
-        set_env("PIPELINE_PLANNING_MODEL", val)
-        current_persisted["pipeline_planning_model"] = val
-
-    if req.pipeline_planning_effort:
-        val = req.pipeline_planning_effort.strip().lower()
-        config.PIPELINE_PLANNING_EFFORT = val
-        os.environ["PIPELINE_PLANNING_EFFORT"] = val
-        set_env("PIPELINE_PLANNING_EFFORT", val)
-        current_persisted["pipeline_planning_effort"] = val
-
-    if req.pipeline_implementation_model:
-        val = req.pipeline_implementation_model.strip()
-        config.PIPELINE_IMPLEMENTATION_MODEL = val
-        os.environ["PIPELINE_IMPLEMENTATION_MODEL"] = val
-        set_env("PIPELINE_IMPLEMENTATION_MODEL", val)
-        current_persisted["pipeline_implementation_model"] = val
-
-    if req.pipeline_implementation_effort:
-        val = req.pipeline_implementation_effort.strip().lower()
-        config.PIPELINE_IMPLEMENTATION_EFFORT = val
-        os.environ["PIPELINE_IMPLEMENTATION_EFFORT"] = val
-        set_env("PIPELINE_IMPLEMENTATION_EFFORT", val)
-        current_persisted["pipeline_implementation_effort"] = val
-
-    try:
-        env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    except Exception as e:
-        logger.warning(f"Could not persist to .env: {e}")
-    save_settings(current_persisted)
-
-    result = {
-        "status": "ok",
-        "has_gemini_api_key": bool(config.GEMINI_API_KEY),
-        "default_model": config.DEFAULT_MODEL,
-        "default_effort": config.DEFAULT_EFFORT,
-        "allow_overage_credits": config.get_cli_overage_credits(),
-        "max_session_tokens": config.MAX_SESSION_TOKENS,
-        "compact_completed_chat": config.COMPACT_COMPLETED_CHAT,
-        "agy_mode": config.AGY_MODE,
-        "default_repo": config.DEFAULT_REPO,
-        "is_server": config.IS_SERVER,
-        "cli_idle_timeout_minutes": config.CLI_IDLE_TIMEOUT_MINUTES,
-        "workflow_pipeline_enabled": config.WORKFLOW_PIPELINE_ENABLED,
-        "guardrails_enabled": config.GUARDRAILS_ENABLED,
-        "auto_merge_enabled": config.AUTO_MERGE_ENABLED,
-        "pipeline_summary_model": config.PIPELINE_SUMMARY_MODEL,
-        "pipeline_summary_effort": config.PIPELINE_SUMMARY_EFFORT,
-        "pipeline_planning_model": config.PIPELINE_PLANNING_MODEL,
-        "pipeline_planning_effort": config.PIPELINE_PLANNING_EFFORT,
-        "pipeline_implementation_model": config.PIPELINE_IMPLEMENTATION_MODEL,
-        "pipeline_implementation_effort": config.PIPELINE_IMPLEMENTATION_EFFORT
-    }
-    await runner.broadcast("settings_updated", result)
-    return result
+app.include_router(settings_router)
 
 @app.get("/api/telemetry/tokens")
 async def get_token_telemetry():

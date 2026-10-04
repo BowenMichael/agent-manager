@@ -70,11 +70,10 @@ if (btnInterrupt) {
     btnInterrupt.disabled = true;
     btnInterrupt.textContent = 'Interrupting...';
     try {
-      const res = await fetch(`/api/agents/${activeSessionId}/interrupt`, { method: 'POST' });
-      const data = await res.json();
+      const data = await safeFetchJson(`/api/agents/${activeSessionId}/interrupt`, { method: 'POST' });
       console.log('Interrupted:', data);
     } catch (err) {
-      alert('Error interrupting agent: ' + err.message);
+      alert('Error interrupting agent: ' + extractErrorMessage(err));
     } finally {
       btnInterrupt.disabled = false;
       btnInterrupt.textContent = 'Interrupt & Re-prompt';
@@ -689,15 +688,14 @@ btnStopCurrent.addEventListener('click', async () => {
   btnStopCurrent.textContent = 'Stopping...';
 
   try {
-    const res = await fetch(`/api/agents/${activeSessionId}/stop`, {
+    const data = await safeFetchJson(`/api/agents/${activeSessionId}/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason: 'Stopped manually from UI Control Plane' })
     });
-    const data = await res.json();
     console.log(data);
   } catch (err) {
-    alert('Failed to stop agent: ' + err.message);
+    alert('Failed to stop agent: ' + extractErrorMessage(err));
   } finally {
     btnStopCurrent.textContent = 'Stop Agent';
   }
@@ -712,18 +710,14 @@ async function sendContext() {
   btnSendContext.textContent = 'Sending...';
 
   try {
-    const res = await fetch(`/api/agents/${activeSessionId}/context`, {
+    await safeFetchJson(`/api/agents/${activeSessionId}/context`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context: text })
     });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to inject context');
-    }
     contextInput.value = '';
   } catch (err) {
-    alert('Error injecting context: ' + err.message);
+    alert('Error injecting context: ' + extractErrorMessage(err));
   } finally {
     btnSendContext.disabled = false;
     btnSendContext.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send Context`;
@@ -790,12 +784,11 @@ btnSubmitSimulate.addEventListener('click', async () => {
       repo: 'BowenMichael/f1-frontend'
     };
 
-    const res = await fetch('/api/webhooks/simulate', {
+    const data = await safeFetchJson('/api/webhooks/simulate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
     modalSimulate.classList.add('hidden');
     if (data.session) {
       selectSession(data.session.session_id);
@@ -803,7 +796,7 @@ btnSubmitSimulate.addEventListener('click', async () => {
       selectSession(data.result.session_id);
     }
   } catch (err) {
-    alert('Failed to simulate webhook: ' + err.message);
+    alert('Failed to simulate webhook: ' + extractErrorMessage(err));
   } finally {
     btnSubmitSimulate.disabled = false;
     btnSubmitSimulate.textContent = 'Simulate Webhook';
@@ -829,7 +822,7 @@ btnSubmitLaunch.addEventListener('click', async () => {
   btnSubmitLaunch.textContent = 'Spawning...';
 
   try {
-    const res = await fetch('/api/agents/spawn', {
+    const session = await safeFetchJson('/api/agents/spawn', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -838,11 +831,10 @@ btnSubmitLaunch.addEventListener('click', async () => {
         prompt: prompt
       })
     });
-    const session = await res.json();
     modalLaunch.classList.add('hidden');
     selectSession(session.session_id);
   } catch (err) {
-    alert('Failed to launch agent: ' + err.message);
+    alert('Failed to launch agent: ' + extractErrorMessage(err));
   } finally {
     btnSubmitLaunch.disabled = false;
     btnSubmitLaunch.textContent = 'Spawn Agent';
@@ -913,9 +905,8 @@ function showToast(msg, type = 'info') {
 
 async function loadSettings() {
   try {
-    const res = await fetch('/api/settings');
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await safeFetchJson('/api/settings');
+    if (!data) return;
 
     // API Key status
     if (data.has_gemini_api_key) {
@@ -1197,31 +1188,25 @@ btnSaveSettings.addEventListener('click', async () => {
     if (key) {
       payload.gemini_api_key = key;
     }
-    const res = await fetch('/api/settings', {
+    const data = await safeFetchJson('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`HTTP ${res.status}: ${errText}`);
-    }
-
-    const data = await res.json();
     modalSettings.classList.add('hidden');
     if (inputGeminiKey) inputGeminiKey.value = '';
 
     // Update badges
     const badgeModel = document.getElementById('current-model-badge');
     const badgeEffort = document.getElementById('current-effort-badge');
-    if (badgeModel) badgeModel.textContent = data.default_model;
-    if (badgeEffort) badgeEffort.textContent = data.default_effort;
+    if (badgeModel && data.default_model) badgeModel.textContent = data.default_model;
+    if (badgeEffort && data.default_effort) badgeEffort.textContent = data.default_effort;
 
     showToast(`Settings saved! Model: ${data.default_model} (${data.default_effort} effort). Will apply on next prompt.`);
     await loadSettings();
   } catch (err) {
-    showToast('Failed to save settings: ' + err.message, 'error');
+    showToast('Failed to save settings: ' + extractErrorMessage(err), 'error');
   } finally {
     btnSaveSettings.disabled = false;
     btnSaveSettings.textContent = 'Save Settings';
@@ -1239,10 +1224,9 @@ if (btnSyncBoard) {
   btnSyncBoard.addEventListener('click', async () => {
     btnSyncBoard.classList.add('spinning');
     try {
-      await fetch('/api/board/sync', { method: 'POST' });
+      await safeFetchJson('/api/board/sync', { method: 'POST' });
       // Fetch fresh sessions
-      const res = await fetch('/api/agents');
-      sessions = await res.json();
+      sessions = await safeFetchJson('/api/agents') || [];
       renderSessionsList();
       updateStats();
     } catch (e) {
@@ -1264,16 +1248,14 @@ if (btnRestartCurrent) {
     btnRestartCurrent.innerHTML = `<svg class="spinning" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Restarting...`;
 
     try {
-      const res = await fetch(`/api/agents/${activeSessionId}/restart`, {
+      const updated = await safeFetchJson(`/api/agents/${activeSessionId}/restart`, {
         method: 'POST'
       });
-      if (!res.ok) throw new Error('Failed to restart agent');
-      const updated = await res.json();
       const idx = sessions.findIndex(s => s.session_id === updated.session_id);
       if (idx !== -1) sessions[idx] = updated;
       selectSession(updated.session_id);
     } catch (err) {
-      alert('Error restarting agent: ' + err.message);
+      alert('Error restarting agent: ' + extractErrorMessage(err));
     } finally {
       btnRestartCurrent.disabled = false;
       btnRestartCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Restart Agent`;
@@ -1290,15 +1272,14 @@ if (btnOpenTerminal) {
     try {
       btnOpenTerminal.disabled = true;
       btnOpenTerminal.textContent = 'Launching...';
-      const res = await fetch(`/api/agents/${activeSessionId}/launch-terminal`, { method: 'POST' });
-      const data = await res.json();
+      await safeFetchJson(`/api/agents/${activeSessionId}/launch-terminal`, { method: 'POST' });
       btnOpenTerminal.textContent = 'Terminal Opened!';
       setTimeout(() => {
         btnOpenTerminal.disabled = false;
         btnOpenTerminal.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg> Launch Terminal';
       }, 3000);
     } catch (e) {
-      alert('Could not launch terminal: ' + e.message);
+      alert('Could not launch terminal: ' + extractErrorMessage(e));
       btnOpenTerminal.disabled = false;
     }
   });
@@ -1524,14 +1505,13 @@ if (btnResumeCurrent) {
     try {
       btnResumeCurrent.disabled = true;
       btnResumeCurrent.textContent = 'Resuming...';
-      const res = await fetch(`/api/agents/${activeSessionId}/resume`, { method: 'POST' });
-      const data = await res.json();
+      await safeFetchJson(`/api/agents/${activeSessionId}/resume`, { method: 'POST' });
       setTimeout(() => {
         btnResumeCurrent.disabled = false;
         btnResumeCurrent.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Resume';
       }, 1000);
     } catch (e) {
-      alert('Could not resume agent: ' + e.message);
+      alert('Could not resume agent: ' + extractErrorMessage(e));
       btnResumeCurrent.disabled = false;
     }
   });
@@ -1549,13 +1529,11 @@ if (btnDoneCurrent) {
     btnDoneCurrent.textContent = 'Completing...';
 
     try {
-      const res = await fetch(`/api/agents/${activeSessionId}/complete`, {
+      await safeFetchJson(`/api/agents/${activeSessionId}/complete`, {
         method: 'POST'
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to complete agent');
     } catch (err) {
-      alert('Error completing agent: ' + err.message);
+      alert('Error completing agent: ' + extractErrorMessage(err));
     } finally {
       btnDoneCurrent.disabled = false;
       btnDoneCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Mark Done`;
@@ -1567,11 +1545,7 @@ if (btnDoneCurrent) {
 async function archiveAgent(sessionId) {
   if (!sessionId) return;
   try {
-    const res = await fetch(`/api/agents/${sessionId}/archive`, { method: 'POST' });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to archive agent');
-    }
+    await safeFetchJson(`/api/agents/${sessionId}/archive`, { method: 'POST' });
     const s = sessions.find(item => item.session_id === sessionId);
     if (s) {
       s.is_archived = true;
@@ -1584,18 +1558,14 @@ async function archiveAgent(sessionId) {
     }
     showToast('Agent session archived successfully.');
   } catch (err) {
-    alert('Error archiving agent: ' + err.message);
+    alert('Error archiving agent: ' + extractErrorMessage(err));
   }
 }
 
 async function unarchiveAgent(sessionId) {
   if (!sessionId) return;
   try {
-    const res = await fetch(`/api/agents/${sessionId}/unarchive`, { method: 'POST' });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to unarchive agent');
-    }
+    await safeFetchJson(`/api/agents/${sessionId}/unarchive`, { method: 'POST' });
     const s = sessions.find(item => item.session_id === sessionId);
     if (s) {
       s.is_archived = false;
@@ -1608,7 +1578,7 @@ async function unarchiveAgent(sessionId) {
     }
     showToast('Agent session restored to active list.');
   } catch (err) {
-    alert('Error unarchiving agent: ' + err.message);
+    alert('Error unarchiving agent: ' + extractErrorMessage(err));
   }
 }
 
@@ -1656,12 +1626,10 @@ if (btnCompactCurrent) {
     btnCompactCurrent.disabled = true;
     btnCompactCurrent.textContent = 'Compacting...';
     try {
-      const res = await fetch(`/api/agents/${activeSessionId}/compact`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || 'Failed to compact chat');
+      await safeFetchJson(`/api/agents/${activeSessionId}/compact`, { method: 'POST' });
       showToast('Chat compacted and compressed successfully! Intermediate tokens condensed.');
     } catch (err) {
-      alert('Error compacting chat: ' + err.message);
+      alert('Error compacting chat: ' + extractErrorMessage(err));
     } finally {
       btnCompactCurrent.disabled = false;
       btnCompactCurrent.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg> Compact Chat`;
@@ -1683,12 +1651,10 @@ const statPillTokens = document.getElementById('stat-pill-tokens');
 
 async function fetchAndRenderTelemetry(timescale = activeTimescale) {
   try {
-    const res = await fetch('/api/telemetry/tokens');
-    if (!res.ok) throw new Error('Failed to fetch telemetry');
-    currentTelemetryData = await res.json();
+    currentTelemetryData = await safeFetchJson('/api/telemetry/tokens');
     renderTelemetryView(currentTelemetryData, timescale);
   } catch (err) {
-    console.error('Error fetching telemetry:', err);
+    console.error('Error fetching telemetry:', extractErrorMessage(err));
   }
 }
 
