@@ -21,6 +21,7 @@ To prevent interference with the developer's active editor, other agent sessions
      git push origin feat/<short-description>
      ```
    - Open a Pull Request linking to the issue with visual proof, test logs, and acceptance criteria verification.
+   - **CRITICAL**: The agent MUST ensure the corresponding feature branch is successfully merged into `main` before moving the Project Board card to `✅ Done` or marking the issue as complete. If a Pull Request is pending review, the issue must remain in `🔍 In Review`.
    - Clean up the worktree once the branch is merged/archived:
      ```bash
      git worktree remove .worktrees/feat-<short-description>
@@ -122,7 +123,7 @@ When a threshold or circuit breaker is reached, execution is halted automaticall
 ---
 
 ## 4. Chat Lifecycle & Re-Queued Task Ingestion
-- **Chat Stays Open Until 'Done'**: Agent sessions and chats must remain open and interactive in `IN_REVIEW` for continuous user feedback, questions, and testing until the card is explicitly moved to `✅ Done` on the Project Board.
+- **Chat Stays Open Until 'Done'**: Agent sessions and chats must remain open and interactive in `IN_REVIEW` for continuous user feedback, questions, and testing until the card is explicitly moved to `✅ Done` on the Project Board. *Note: An issue cannot be moved to `✅ Done` until its feature branch is merged into `main`.*
 - **Re-Queued Task Ingestion**: When an issue is moved back into `📋 Ready for Agent`, the system automatically inspects the issue for new user comments or requirement edits and feeds them into the existing agent session as continuation context in its active worktree.
 
 ---
