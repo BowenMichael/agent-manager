@@ -47,8 +47,8 @@ SUBSCRIPTION_MODE = os.getenv("SUBSCRIPTION_MODE", "true").lower() in ("true", "
 
 AGY_CLI_PATH = Path(os.environ.get("LOCALAPPDATA", r"C:\Users\tv\AppData\Local")) / "agy" / "bin" / "agy.exe"
 
-# Antigravity CLI Execution Mode: 'terminal' (Default Option 1) or 'web_stream' (Override Option 2)
-AGY_MODE = (_saved_settings.get("agy_mode") or os.getenv("AGY_MODE", "terminal")).lower()
+# Antigravity CLI Execution Mode: 'web_stream' (Default) or 'terminal' (Desktop Window)
+AGY_MODE = (_saved_settings.get("agy_mode") or os.getenv("AGY_MODE", "web_stream")).lower()
 
 IS_SERVER = (_saved_settings.get("is_server") if "is_server" in _saved_settings else os.getenv("IS_SERVER", "false").lower() in ("true", "1", "yes"))
 CLI_IDLE_TIMEOUT_MINUTES = int(_saved_settings.get("cli_idle_timeout_minutes") or os.getenv("CLI_IDLE_TIMEOUT_MINUTES", "30"))

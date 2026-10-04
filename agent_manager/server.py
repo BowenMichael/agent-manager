@@ -41,6 +41,12 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(runner.start_watchdog())
     # Startup: Start autonomous backlog cron dispatcher (runs every 10 mins)
     asyncio.create_task(dispatcher.start(initial_delay_seconds=600, interval_seconds=600))
+    # Sync historical sessions into token telemetry cache
+    try:
+        from agent_manager.telemetry import sync_from_sessions_cache
+        sync_from_sessions_cache(runner.sessions.values())
+    except Exception as e:
+        logger.warning(f"Failed to sync historical telemetry on startup: {e}")
     yield
     # Shutdown: Stop watcher and cron dispatcher
     watcher.stop()
@@ -280,6 +286,12 @@ async def update_settings(req: SettingsUpdateRequest):
     }
     await runner.broadcast("settings_updated", result)
     return result
+
+@app.get("/api/telemetry/tokens")
+async def get_token_telemetry():
+    """Returns aggregated token telemetry across multiple timescales (1h, 24h, 7d, 30d, all-time)."""
+    from agent_manager.telemetry import get_timescale_metrics
+    return get_timescale_metrics()
 
 @app.get("/api/cron/status")
 async def get_cron_status():
