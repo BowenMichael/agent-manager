@@ -2,7 +2,7 @@
  * projects-table.js
  * Modular table row and column renderer for the Projects View.
  */
-
+(function() {
 function getStatusClass(statusStr) {
   const s = String(statusStr || '').toLowerCase();
   if (s.includes('ready')) return 'pv-tag-ready';
@@ -190,3 +190,4 @@ window.renderTableRow = renderTableRow;
 window.renderAgentCell = renderAgentCell;
 window.renderWorktreeCell = renderWorktreeCell;
 window.renderPrCell = renderPrCell;
+})();

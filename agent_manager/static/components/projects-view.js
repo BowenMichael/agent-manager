@@ -2,7 +2,7 @@
  * projects-view.js
  * Multi-Project Portfolio View Web Component for Agent Manager.
  */
-
+(function() {
 const escapeHtml = (str) => (window.escapeHtml ? window.escapeHtml(str) : (str || ''));
 const renderProjectsTable = (...args) => (window.renderProjectsTable ? window.renderProjectsTable(...args) : '');
 const openNewProjectIssueModal = (...args) => (window.openNewProjectIssueModal ? window.openNewProjectIssueModal(...args) : null);
@@ -263,4 +263,7 @@ class ProjectsView extends HTMLElement {
   }
 }
 
-customElements.define('projects-view', ProjectsView);
+if (!customElements.get('projects-view')) {
+  customElements.define('projects-view', ProjectsView);
+}
+})();
