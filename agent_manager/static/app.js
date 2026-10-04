@@ -550,6 +550,9 @@ function updateActiveSessionView(session) {
 
   btnStopCurrent.disabled = (session.status === 'STOPPED' || session.status === 'COMPLETED' || session.status === 'FAILED' || session.is_archived);
   updateOverviewPanel(session);
+  if (typeof window.updateAgentTabsContext === 'function') {
+    window.updateAgentTabsContext(session.session_id);
+  }
 }
 
 function renderTranscript(session) {

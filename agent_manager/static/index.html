@@ -12,6 +12,9 @@
   <link rel="stylesheet" href="/static/components/command-output.css">
   <link rel="stylesheet" href="/static/components/diff-viewer.css">
   <link rel="stylesheet" href="/static/components/file-viewer-modal.css">
+  <link rel="stylesheet" href="/static/components/agent-tabs.css">
+  <link rel="stylesheet" href="/static/components/git-tree-viewer.css">
+  <link rel="stylesheet" href="/static/components/issue-viewer.css">
 </head>
 <body>
   <div class="app-layout">
@@ -282,9 +285,41 @@
 
             <!-- Right Pane: Live Agent Activity & Mission Control Overview -->
             <div class="agent-overview-pane" id="agent-overview-pane">
-              <!-- Current Activity Highlight -->
-              <div class="overview-box current-activity-box">
-                <div class="overview-box-header">
+              <!-- Tabbed Navigation Header -->
+              <div class="agent-tabs-header">
+                <button class="agent-tab-btn active" id="tab-btn-overview" data-target="tab-pane-overview">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="3" width="7" height="7"></rect>
+                    <rect x="14" y="14" width="7" height="7"></rect>
+                    <rect x="3" y="14" width="7" height="7"></rect>
+                  </svg>
+                  Overview
+                </button>
+                <button class="agent-tab-btn" id="tab-btn-gittree" data-target="tab-pane-gittree">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="6" y1="3" x2="6" y2="15"></line>
+                    <circle cx="18" cy="6" r="3"></circle>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <path d="M18 9a9 9 0 0 1-9 9"></path>
+                  </svg>
+                  Git Tree
+                </button>
+                <button class="agent-tab-btn" id="tab-btn-issue" data-target="tab-pane-issue">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  Issue
+                </button>
+              </div>
+
+              <!-- Tab Pane: Overview (Default) -->
+              <div class="agent-tab-pane" id="tab-pane-overview">
+                <!-- Current Activity Highlight -->
+                <div class="overview-box current-activity-box">
+                  <div class="overview-box-header">
                   <span class="overview-label">CURRENT ACTIVITY</span>
                   <span class="badge-activity-running" id="overview-badge">EXECUTING</span>
                 </div>
@@ -431,9 +466,20 @@
                 </ul>
               </div>
             </div>
+
+            <!-- Tab Pane: Git Tree -->
+            <div class="agent-tab-pane hidden" id="tab-pane-gittree">
+              <git-tree-viewer id="active-git-tree-viewer"></git-tree-viewer>
+            </div>
+
+            <!-- Tab Pane: Issue Context -->
+            <div class="agent-tab-pane hidden" id="tab-pane-issue">
+              <issue-viewer id="active-issue-viewer"></issue-viewer>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
     </main>
 
     <!-- Modal: Simulate GitHub Webhook -->
@@ -843,6 +889,9 @@
   <script src="/static/components/command-output.js"></script>
   <script src="/static/components/diff-viewer.js"></script>
   <script src="/static/components/file-viewer-modal.js"></script>
+  <script src="/static/components/agent-tabs-controller.js"></script>
+  <script src="/static/components/git-tree-viewer.js"></script>
+  <script src="/static/components/issue-viewer.js"></script>
   <script src="/static/app.js"></script>
   <div class="toast-stack" id="toast-stack"></div>
 </body>

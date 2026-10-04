@@ -102,3 +102,53 @@ async def find_pr_for_branch(repo: str, branch: str) -> Optional[int]:
     except Exception as e:
         logger.exception(f"Exception finding PR for {repo}:{branch}: {e}")
         return None
+
+async def get_issue(repo: str, issue_number: int) -> Optional[dict]:
+    """Retrieves GitHub issue details."""
+    if not repo or not issue_number:
+        return None
+
+    url = f"https://api.github.com/repos/{repo}/issues/{issue_number}"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AgentManagerLocal/1.0"
+    }
+    if GITHUB_PERSONAL_ACCESS_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning(f"Failed to fetch issue {repo}#{issue_number}: HTTP {resp.status_code}")
+            return None
+    except Exception as e:
+        logger.exception(f"Exception fetching issue {repo}#{issue_number}: {e}")
+        return None
+
+async def get_issue_comments(repo: str, issue_number: int) -> list:
+    """Retrieves comments for a GitHub issue."""
+    if not repo or not issue_number:
+        return []
+
+    url = f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AgentManagerLocal/1.0"
+    }
+    if GITHUB_PERSONAL_ACCESS_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_PERSONAL_ACCESS_TOKEN}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning(f"Failed to fetch comments for {repo}#{issue_number}: HTTP {resp.status_code}")
+            return []
+    except Exception as e:
+        logger.exception(f"Exception fetching comments for {repo}#{issue_number}: {e}")
+        return []
