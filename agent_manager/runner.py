@@ -972,7 +972,7 @@ class AgentRunnerManager:
                 f"   - SLICE READING ONLY: When calling view_file, ALWAYS supply StartLine and EndLine (max 100 lines at once). NEVER view entire large files over 200 lines.\n"
                 f"   - NEVER RE-READ: Do NOT call view_file on the same file or line range twice in a row. Rely on context and proceed directly to code edits or tests.\n"
                 f"4. ANTI-MONOLITH RULE: Never create monolithic files over 250 lines. Decompose logic into modular, single-responsibility files (models, services, utils, components). When modifying large files (>300 lines), extract new functions into separate helper files.\n"
-                f"5. CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding {getattr(config, 'MAX_TURNS_PER_SESSION', 15)} turns will immediately halt execution.\n"
+                f"{('5. CIRCUIT BREAKER ACTIVE: Duplicate tool calls, excessive consecutive file reads without edits, or exceeding ' + str(getattr(config, 'MAX_TURNS_PER_SESSION', 15)) + ' turns will immediately halt execution.\n') if getattr(config, 'GUARDRAILS_ENABLED', True) else '5. SAFETY GUARDRAILS DISABLED: Unrestricted execution mode active per developer settings.\n'}"
                 f"6. CRITICAL: Do NOT add, remove, or modify GitHub issue tags/labels. Board status columns are managed directly.\n"
                 f"7. Once changes are ready, commit and create a pull request if appropriate.\n"
             )
@@ -1085,7 +1085,7 @@ class AgentRunnerManager:
                                 session.quota_percent = min(100.0, round((session.total_tokens / current_max_tokens) * 100, 1))
 
                                 # TOKEN LIMIT GUARDRAIL
-                                if session.total_tokens >= current_max_tokens:
+                                if getattr(config, "GUARDRAILS_ENABLED", True) and session.total_tokens >= current_max_tokens:
                                     session.status = AgentStatus.PAUSED
                                     session.error_message = f"Token budget limit reached ({session.total_tokens:,} / {current_max_tokens:,} tokens)."
                                     await self._append_message(
@@ -1134,7 +1134,7 @@ class AgentRunnerManager:
                                         session.consecutive_duplicate_tool_count = 1
 
                                     dup_threshold = getattr(config, "CIRCUIT_BREAKER_DUPLICATE_THRESHOLD", 3)
-                                    if session.consecutive_duplicate_tool_count >= dup_threshold:
+                                    if getattr(config, "GUARDRAILS_ENABLED", True) and session.consecutive_duplicate_tool_count >= dup_threshold:
                                         logger.warning(
                                             f"[Circuit Breaker] Repetitive tool loop detected for session {session_id}: "
                                             f"'{tname}' executed {session.consecutive_duplicate_tool_count} consecutive times with identical arguments."
@@ -1188,7 +1188,7 @@ class AgentRunnerManager:
                                         session.consecutive_view_file_count = 0
 
                                     max_reads_threshold = getattr(config, "CIRCUIT_BREAKER_MAX_CONSECUTIVE_READS", 8)
-                                    if session.consecutive_view_file_count >= max_reads_threshold:
+                                    if getattr(config, "GUARDRAILS_ENABLED", True) and session.consecutive_view_file_count >= max_reads_threshold:
                                         logger.warning(
                                             f"[Circuit Breaker] Excessive consecutive file reads for session {session_id}: "
                                             f"{session.consecutive_view_file_count} consecutive view_file calls without code edits or tests."
@@ -1219,7 +1219,7 @@ class AgentRunnerManager:
 
                                     # 3. TURN BUDGET GUARDRAIL (AGENTS.md Section 2: Max 15 Turns)
                                     max_turns_limit = getattr(config, "MAX_TURNS_PER_SESSION", 15)
-                                    if session.turn_count >= max_turns_limit:
+                                    if getattr(config, "GUARDRAILS_ENABLED", True) and session.turn_count >= max_turns_limit:
                                         logger.warning(
                                             f"[Turn Budget Guardrail] Session {session_id} reached turn limit ({session.turn_count} / {max_turns_limit}). "
                                             "Pausing per AGENTS.md budget guardrail."
