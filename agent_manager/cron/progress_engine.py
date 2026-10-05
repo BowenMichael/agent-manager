@@ -18,6 +18,14 @@ logger = logging.getLogger("agent_manager.cron.progress_engine")
 # Metric-to-Issue Priority Mapping
 METRIC_ISSUE_MAP = [
     {
+        "id": "feedback_flywheel_api",
+        "repo": "BowenMichael/agent-manager",
+        "issue_number": 102,
+        "title": "[FLYWHEEL]: Universal Feedback Ingestion API & Project Board Auto-Placement",
+        "condition": lambda cq, mf: not (Path(__file__).resolve().parents[2] / "agent_manager" / "api" / "routes" / "feedback.py").exists(),
+        "reason": "Universal Feedback Flywheel API is missing; user feedback cannot automatically seed the agent queue."
+    },
+    {
         "id": "anti_monolith_refactor",
         "repo": "BowenMichael/agent-manager",
         "issue_number": 100,
@@ -30,7 +38,7 @@ METRIC_ISSUE_MAP = [
         "repo": "BowenMichael/agent-manager",
         "issue_number": 101,
         "title": "[GIT]: Autonomous Stale Worktree Pruner & Merge Lifecycle Manager",
-        "condition": lambda cq, mf: mf["pillars"]["II_isolation"].get("unmerged_worktrees_on_disk", 0) > 5,
+        "condition": lambda cq, mf: not (Path(__file__).resolve().parents[2] / "agent_manager" / "services" / "worktree_cleaner.py").exists() and mf["pillars"]["II_isolation"].get("unmerged_worktrees_on_disk", 0) > 5,
         "reason": "Over 5 unmerged/stale worktrees detected on disk (violates Sacred Isolation)."
     },
     {

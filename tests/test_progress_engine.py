@@ -15,8 +15,11 @@ class TestProgressEngine(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
 
+    @patch("pathlib.Path.exists")
     @patch("agent_manager.cron.progress_engine.generate_code_health_report")
-    def test_evaluate_next_target_finds_monolith(self, mock_health):
+    def test_evaluate_next_target_finds_monolith(self, mock_health, mock_exists):
+        # When feedback.py exists (issue 102 done), monolith is top target
+        mock_exists.return_value = True
         mock_health.return_value = {
             "readability_and_simplicity": {"max_lines_in_file": 350, "bloated_functions_count": 0},
             "root_hygiene": {"root_loose_files_count": 0},
@@ -41,9 +44,11 @@ class TestProgressEngine(unittest.TestCase):
         self.assertEqual(res["action"], "MONITOR")
         self.assertIn("agent-sess-1", res["active_agents"])
 
+    @patch("pathlib.Path.exists")
     @patch("agent_manager.cron.progress_engine.generate_code_health_report")
     @patch("agent_manager.cron.progress_engine.inspect_active_local_agents")
-    def test_check_and_advance_idle_identifies_task(self, mock_inspect, mock_health):
+    def test_check_and_advance_idle_identifies_task(self, mock_inspect, mock_health, mock_exists):
+        mock_exists.return_value = True
         mock_health.return_value = {
             "readability_and_simplicity": {"max_lines_in_file": 350, "bloated_functions_count": 0},
             "root_hygiene": {"root_loose_files_count": 0},
@@ -66,7 +71,7 @@ class TestProgressEngine(unittest.TestCase):
         self.assertEqual(res_status.status_code, 200)
         data_status = res_status.json()
         self.assertIn("next_metric_target", data_status)
-        self.assertIn(data_status["next_metric_target"]["issue_number"], [100, 101, 39, 18, 90])
+        self.assertIn(data_status["next_metric_target"]["issue_number"], [102, 100, 101, 39, 18, 90])
 
         # Test advance dry-run endpoint
         res_advance = self.client.post("/api/cron/progress-now?dry_run=true")
