@@ -16,40 +16,22 @@ class TestMarkdownIntegration(unittest.TestCase):
         self.runner = AgentRunnerManager()
 
     def test_static_markdown_files_exist_on_disk(self):
-        """Verify the markdown static files and vendor dependencies exist in the static directory."""
-        expected_files = [
-            STATIC_DIR / "markdown.css",
-            STATIC_DIR / "markdown-renderer.js",
-            STATIC_DIR / "vendor" / "marked.min.js",
-            STATIC_DIR / "vendor" / "purify.min.js",
-        ]
-        for path in expected_files:
-            self.assertTrue(path.exists(), f"Expected static file does not exist: {path}")
-            self.assertGreater(path.stat().st_size, 100, f"File {path} is suspiciously small.")
+        """Verify the built frontend bundle and assets exist in the static directory."""
+        self.assertTrue((STATIC_DIR / "index.html").exists(), f"Expected index.html does not exist in {STATIC_DIR}")
+        self.assertTrue((STATIC_DIR / "assets").exists(), f"Expected assets dir does not exist in {STATIC_DIR}")
 
     def test_static_files_served_by_fastapi(self):
-        """Verify that FastAPI serves all markdown files with 200 OK."""
-        endpoints = [
-            "/static/markdown.css",
-            "/static/markdown-renderer.js",
-            "/static/vendor/marked.min.js",
-            "/static/vendor/purify.min.js",
-        ]
-        for ep in endpoints:
-            res = self.client.get(ep)
-            self.assertEqual(res.status_code, 200, f"Failed to fetch {ep}: {res.status_code}")
-            self.assertGreater(len(res.content), 100)
+        """Verify that FastAPI serves root index.html with 200 OK."""
+        res = self.client.get("/")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("root", res.text)
 
     def test_index_html_includes_markdown_tags(self):
-        """Verify index.html contains links to markdown stylesheets and scripts."""
+        """Verify index.html contains bundle scripts and CSS links."""
         res = self.client.get("/")
         self.assertEqual(res.status_code, 200)
         html = res.text
-
-        self.assertIn("/static/markdown.css", html)
-        self.assertIn("/static/vendor/marked.min.js", html)
-        self.assertIn("/static/vendor/purify.min.js", html)
-        self.assertIn("/static/markdown-renderer.js", html)
+        self.assertIn("/static/assets/", html)
 
     def test_runner_preserves_markdown_messages(self):
         """Verify ConversationMessage and runner store markdown formatting without corruption."""

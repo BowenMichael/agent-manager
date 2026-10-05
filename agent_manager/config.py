@@ -44,7 +44,7 @@ if not GITHUB_PERSONAL_ACCESS_TOKEN:
             pass
 
 BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
+STATIC_DIR = BASE_DIR.parent / "frontend" / "dist"
 
 if sys.platform == "win32":
     ANTIGRAVITY_IDE_CLI = Path(r"C:\Users\tv\AppData\Local\Programs\Antigravity IDE\bin\antigravity-ide.cmd")

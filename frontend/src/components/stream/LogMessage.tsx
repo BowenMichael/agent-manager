@@ -1,5 +1,6 @@
 import React from 'react'
 import type { ConversationMessage } from '../../types/agent'
+import { MarkdownView } from '../common/MarkdownView'
 
 export const LogMessage: React.FC<{ message: ConversationMessage }> = ({ message }) => {
   const isTool = message.role === 'TOOL_CALL' || message.role === 'TOOL_RESULT'
@@ -23,7 +24,11 @@ export const LogMessage: React.FC<{ message: ConversationMessage }> = ({ message
         </span>
       </div>
 
-      {message.content && <div className="message-content">{message.content}</div>}
+      {message.content && (
+        <div className="message-content">
+          <MarkdownView content={message.content} />
+        </div>
+      )}
 
       {message.tool_args && (
         <details className="tool-details">

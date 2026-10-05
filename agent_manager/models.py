@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 class AgentStatus(str, Enum):
@@ -25,7 +25,7 @@ class ConversationMessage(BaseModel):
     id: str
     role: MessageRole
     content: str
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     tool_name: Optional[str] = None
     tool_args: Optional[Dict[str, Any]] = None
     tool_output: Optional[str] = None
@@ -47,8 +47,8 @@ class AgentSessionInfo(BaseModel):
     status: AgentStatus = AgentStatus.INITIALIZING
     worktree_path: Optional[str] = None
     git_branch: Optional[str] = None
-    started_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
-    updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    started_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     turn_count: int = 0
     max_turns: int = 15
     consecutive_duplicate_tool_count: int = 0

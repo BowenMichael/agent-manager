@@ -125,6 +125,7 @@ When a threshold or circuit breaker is reached, execution is halted automaticall
 ## 4. Chat Lifecycle & Re-Queued Task Ingestion
 - **Chat Stays Open Until 'Done'**: Agent sessions and chats must remain open and interactive in `IN_REVIEW` for continuous user feedback, questions, and testing until the card is explicitly moved to `✅ Done` on the Project Board. *Note: An issue cannot be moved to `✅ Done` until its feature branch is merged into `main`.*
 - **Re-Queued Task Ingestion**: When an issue is moved back into `📋 Ready for Agent`, the system automatically inspects the issue for new user comments or requirement edits and feeds them into the existing agent session as continuation context in its active worktree.
+- **Stopping & Resuming Protocol**: When resuming work in a new chat or picking up after an interruption, agents MUST follow the turn-key startup checklist documented in [docs/agent_lifecycle_and_resume_guide.md](docs/agent_lifecycle_and_resume_guide.md).
 
 ---
 
@@ -172,4 +173,24 @@ To maintain clear auditability, release tracking, and project evolution across a
    - Reference the GitHub issue number (e.g., `(#<issue-number>)`) or Pull Request at the end of each bullet point.
 4. **Verification & Checklist**:
    - In the PR description and final completion comment on GitHub, the agent must explicitly confirm that `CHANGELOG.md` has been updated with the change entries.
+
+---
+
+## 7. 📏 Simplicity, Function Limits & Testability Directives (Mandatory Quality Gate)
+
+To guarantee code maintainability, minimize hallucination surfaces, and ensure high test coverage across all autonomous runs:
+
+1. **Strict Function Length Limit (Max 40 LOC)**:
+   - No function or method may exceed **40 lines of code**.
+   - If a function approaches or exceeds 40 lines, the agent **MUST decompose it** into private subroutines or dedicated helper utilities adhering to the Single-Responsibility Principle.
+2. **Target Test-to-Code Ratio (≥ 0.80)**:
+   - For every feature, bug fix, or refactor, the agent MUST write matching unit tests or integration tests.
+   - Pull Requests must maintain or improve the repository's test density (target: ≥ 0.80 test LOC to source LOC).
+3. **Root Directory Clutter Prevention**:
+   - Zero loose planning or scratch files in the repository root.
+   - Architecture plans must reside in `docs/plans/`, documentation in `docs/`, and tests strictly in `tests/`.
+4. **Automated Supervisor Quality Gate**:
+   - The algorithmic supervisor automatically runs AST verification on the worktree diff prior to PR submission.
+   - Any function > 40 LOC, file > 250 LOC, or un-updated CHANGELOG blocks the PR and triggers automated self-correction.
+
 

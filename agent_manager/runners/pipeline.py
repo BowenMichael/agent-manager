@@ -125,4 +125,27 @@ async def run_workflow_pipeline(manager, session_id: str, task_description: str,
         f"Follow AGENTS.md conventions, and update CHANGELOG.md in the repo root before concluding or opening a PR."
     )
 
-    await manager._run_agent_loop(session_id, implementation_prompt, cwd_dir, is_continuation=True)
+    import subprocess
+    max_verification_attempts = 3
+    for attempt in range(max_verification_attempts):
+        await manager._run_agent_loop(session_id, implementation_prompt, cwd_dir, is_continuation=True)
+        
+        try:
+            # Algorithmic Verification: Did they update CHANGELOG.md?
+            diff_output = subprocess.check_output(
+                ["git", "diff", "--name-only", "main", branch_name], 
+                cwd=cwd_dir, 
+                text=True
+            )
+            if "CHANGELOG.md" in diff_output:
+                logger.info(f"Session {session_id} passed programmatic validation for CHANGELOG.md")
+                break
+            else:
+                failure_msg = "Validation Failed: You did not update CHANGELOG.md. Please update it before finishing."
+                await manager._append_message(session_id, MessageRole.SYSTEM, f"🛑 **{failure_msg}**")
+                implementation_prompt = f"You failed the programmatic validation. {failure_msg}\n\nPlease fix this and conclude."
+                manager._save()
+                await manager.broadcast("session_updated", session.model_dump())
+        except Exception as e:
+            logger.error(f"Failed to verify changelog algorithmically: {e}")
+            break

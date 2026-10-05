@@ -3,9 +3,11 @@ import { useAgents } from '../../context/AgentContext'
 
 interface HeaderProps {
   onOpenLaunchModal: () => void
+  activeView: 'issues' | 'sessions'
+  onToggleView: (view: 'issues' | 'sessions') => void
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenLaunchModal }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenLaunchModal, activeView, onToggleView }) => {
   const { agents, isConnected } = useAgents()
 
   const activeCount = agents.filter((a) => !a.is_archived && a.status !== 'COMPLETED' && a.status !== 'STOPPED').length
@@ -22,8 +24,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenLaunchModal }) => {
         </div>
         <div>
           <h1 className="brand-title">Agent Manager</h1>
-          <span className="brand-subtitle">Google Antigravity SDK • Control Plane (React)</span>
+          <span className="brand-subtitle">Google Antigravity SDK • Control Plane</span>
         </div>
+      </div>
+
+      <div className="header-nav-tabs">
+        <button
+          className={`nav-tab-btn ${activeView === 'issues' ? 'active' : ''}`}
+          onClick={() => onToggleView('issues')}
+        >
+          🎯 Issue Command Center
+        </button>
+        <button
+          className={`nav-tab-btn ${activeView === 'sessions' ? 'active' : ''}`}
+          onClick={() => onToggleView('sessions')}
+        >
+          ⚡ Agent Sessions & Console
+        </button>
       </div>
 
       <div className="header-stats">

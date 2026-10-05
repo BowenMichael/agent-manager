@@ -56,6 +56,31 @@ def save_sessions(sessions: Dict[str, AgentSessionInfo]):
     except Exception as e:
         logger.error(f"Failed to persist sessions to disk: {e}")
 
+def save_single_session(session: AgentSessionInfo):
+    """Safely updates or inserts a single session in persistent cache without clobbering other sessions."""
+    try:
+        storage_file = get_storage_path()
+        if storage_file.exists():
+            with open(storage_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            data = []
+
+        updated = False
+        serialized = session.model_dump()
+        for idx, item in enumerate(data):
+            if item.get("session_id") == session.session_id:
+                data[idx] = serialized
+                updated = True
+                break
+        if not updated:
+            data.append(serialized)
+
+        _atomic_write_json(storage_file, data)
+        logger.debug(f"Saved single session {session.session_id} to {storage_file}")
+    except Exception as e:
+        logger.error(f"Failed to persist single session {session.session_id}: {e}")
+
 def load_sessions() -> Dict[str, AgentSessionInfo]:
     """Loads cached sessions from disk on application startup."""
     storage_file = get_storage_path()
@@ -71,16 +96,21 @@ def load_sessions() -> Dict[str, AgentSessionInfo]:
         for item in data:
             try:
                 session = AgentSessionInfo(**item)
-                # If server restarted while agent was running, recover cleanly to IN_REVIEW/IDLE
+                # If server restarted while agent was running, verify if detached worker is still alive
                 if session.status in [AgentStatus.RUNNING, AgentStatus.INITIALIZING]:
-                    session.status = AgentStatus.IN_REVIEW
-                    session.messages.append(
-                        ConversationMessage(
-                            id=f"restore-{len(session.messages)}",
-                            role=MessageRole.SYSTEM,
-                            content="🔄 [Task Cache Restored] Agent session reloaded from disk cache. Chat remains active and ready for input or review."
+                    from agent_manager.runners.process_manager import is_process_alive
+                    if session.pid and is_process_alive(session.pid):
+                        # Independent daemon service is still running; keep RUNNING state
+                        logger.info(f"Detached agent worker for session {session.session_id} is alive (PID: {session.pid}). Preserving RUNNING state.")
+                    else:
+                        session.status = AgentStatus.IN_REVIEW
+                        session.messages.append(
+                            ConversationMessage(
+                                id=f"restore-{len(session.messages)}",
+                                role=MessageRole.SYSTEM,
+                                content="🔄 [Task Cache Restored] Agent session reloaded from disk cache. Chat remains active and ready for input or review."
+                            )
                         )
-                    )
                 sessions[session.session_id] = session
             except Exception as item_err:
                 logger.warning(f"Error parsing cached session item: {item_err}")

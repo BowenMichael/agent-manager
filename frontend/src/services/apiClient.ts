@@ -87,3 +87,88 @@ export async function addContext(sessionId: string, context: string): Promise<vo
     throw new Error(`Failed to send context: ${res.statusText}`)
   }
 }
+
+export async function fetchIssues(): Promise<any> {
+  const res = await fetch('/api/issues')
+  if (!res.ok) {
+    throw new Error(`Failed to fetch issues: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function startIssueAgent(repo: string, issueNumber: number, title?: string, body?: string): Promise<any> {
+  const res = await fetch('/api/issues/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo, issue_number: issueNumber, title, body }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to start agent: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function pauseIssueAgent(repo: string, issueNumber: number): Promise<any> {
+  const res = await fetch('/api/issues/pause', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo, issue_number: issueNumber }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to pause agent: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function stopIssueAgent(repo: string, issueNumber: number): Promise<any> {
+  const res = await fetch('/api/issues/stop', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo, issue_number: issueNumber }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to stop agent: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function syncProjectBoards(): Promise<any> {
+  const res = await fetch('/api/issues/sync', {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    throw new Error(`Failed to sync boards: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function createVoiceIssue(transcript: string, targetRepo?: string, autoAssign: boolean = true): Promise<any> {
+  const res = await fetch('/api/issues/voice-create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transcript, target_repo: targetRepo || undefined, auto_assign: autoAssign }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to create voice issue: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function restartIssueAgent(repo: string, issueNumber: number): Promise<any> {
+  const res = await fetch('/api/issues/restart', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repo, issue_number: issueNumber }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || `Failed to restart agent: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+

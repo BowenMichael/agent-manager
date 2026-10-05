@@ -11,7 +11,7 @@ from agent_manager.config import (
 from agent_manager.models import AgentStatus, MessageRole
 from agent_manager.runners.helpers import get_repository_context
 from agent_manager.runners.terminal_launcher import launch_desktop_terminal
-from agent_manager.runners.process_manager import launch_detached_agent
+from agent_manager.runners.process_manager import launch_independent_agent_service, launch_detached_agent
 from agent_manager.runners.stream_tailer import tail_agent_log
 
 logger = logging.getLogger("agent_manager.runners.orchestrator")
@@ -35,10 +35,6 @@ async def run_agent_loop(manager, session_id: str, initial_prompt: str, worktree
         cwd_dir = worktree_path or str(WORKSPACE_BASE)
         issue_num = session.issue_number or 0
         branch_name = session.git_branch or f"feat/issue-{issue_num}"
-
-        if session.workflow_pipeline_enabled and not is_continuation:
-            await manager._run_workflow_pipeline(session_id, initial_prompt, cwd_dir, issue_num, branch_name)
-            return
 
         selected_model = session.model or getattr(config, "DEFAULT_MODEL", "gemini-3.8-flash")
         selected_effort = session.effort or getattr(config, "DEFAULT_EFFORT", "high")
@@ -115,13 +111,14 @@ async def run_agent_loop(manager, session_id: str, initial_prompt: str, worktree
             await tail_agent_log(manager, session_id, clean_model=clean_model)
             return
 
-        cmd_args = [str(AGY_CLI_PATH), *cli_model_args, "--dangerously-skip-permissions", "--output-format", "stream-json"]
-        if is_continuation:
-            cmd_args.extend(["--continue", "-p", initial_prompt])
-        else:
-            cmd_args.extend(["-p", agy_prompt])
-
-        pid = launch_detached_agent(cmd_args, cwd=str(cwd_dir), log_file=log_file, exit_file=exit_file)
+        pid = launch_independent_agent_service(
+            session_id=session_id,
+            cwd=str(cwd_dir),
+            log_file=log_file,
+            exit_file=exit_file,
+            is_continuation=is_continuation,
+            prompt=initial_prompt
+        )
         session.pid = pid
         manager._save()
         await manager.broadcast("session_updated", session.model_dump())
@@ -129,9 +126,12 @@ async def run_agent_loop(manager, session_id: str, initial_prompt: str, worktree
         await tail_agent_log(manager, session_id, clean_model=clean_model)
         return
     except asyncio.CancelledError:
-        if session.status != AgentStatus.COMPLETED:
+        from agent_manager.runners.process_manager import is_process_alive
+        if is_process_alive(session.pid):
+            logger.info(f"Server restarting: Agent session {session_id} remains active in independent background service (PID: {session.pid}).")
+        elif session.status != AgentStatus.COMPLETED:
             session.status = AgentStatus.STOPPED
-        logger.info(f"Agent session {session_id} task was cancelled.")
+            logger.info(f"Agent session {session_id} task was cancelled.")
     except Exception as e:
         session.status = AgentStatus.FAILED
         session.error_message = str(e)

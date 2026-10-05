@@ -56,10 +56,9 @@ class AgentRunnerManager:
         for sid in self.sessions:
             self._context_queues[sid] = asyncio.Queue()
 
-        self._reattach_active_sessions()
-
-    def _reattach_active_sessions(self):
+    def reattach_active_sessions(self):
         """Discovers and reattaches to running background agent processes on server startup."""
+        self.sessions = load_sessions()
         for sid, s in self.sessions.items():
             if s.status == AgentStatus.RUNNING and s.pid:
                 if is_process_alive(s.pid):
@@ -67,7 +66,7 @@ class AgentRunnerManager:
                     task = asyncio.create_task(tail_agent_log(self, sid, clean_model=s.model or ""))
                     self._tasks[sid] = task
                 else:
-                    logger.info(f"Detached agent session {sid} (PID: {s.pid}) is no longer active.")
+                    logger.info(f"Detached agent session {sid} (PID: {s.pid}) is no longer active; draining remaining output.")
                     task = asyncio.create_task(tail_agent_log(self, sid, clean_model=s.model or ""))
                     self._tasks[sid] = task
 

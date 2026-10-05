@@ -19,6 +19,7 @@ from agent_manager.api.routes.system import router as system_router
 from agent_manager.api.routes.agents import router as agents_router
 from agent_manager.api.routes.github import router as github_routes_router
 from agent_manager.api.routes.projects import router as projects_router
+from agent_manager.api.routes.issues import router as issues_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +36,8 @@ async def lifespan(app: FastAPI):
     # Startup: Start local Git board watcher
     watcher.start()
     asyncio.create_task(runner.start_watchdog())
+    # Startup: Reattach to any active independent background agent services
+    runner.reattach_active_sessions()
     # Startup: Start autonomous backlog cron dispatcher (runs every 10 mins)
     asyncio.create_task(dispatcher.start(initial_delay_seconds=600, interval_seconds=600))
     # Sync historical sessions into token telemetry cache
@@ -83,6 +86,7 @@ app.include_router(system_router)
 app.include_router(agents_router)
 app.include_router(github_routes_router)
 app.include_router(projects_router)
+app.include_router(issues_router)
 
 
 # WebSocket for Real-Time Streaming

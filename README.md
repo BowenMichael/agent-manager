@@ -2,7 +2,11 @@
 
 > **Webhook Dispatcher, Live Dashboard & Interactive Control Plane for Google Antigravity Agents**
 
+[![Read The Manifesto](https://img.shields.io/badge/Manifesto-Read%20Our%20Pillars-blue?style=for-the-badge)](./MANIFESTO.md)
+
 Agent Manager is an orchestration system built on the **Google Antigravity SDK** (`google-antigravity`). It turns GitHub issues and project board transitions into isolated, autonomous AI agent sessions while giving you real-time visibility, graceful stop controls, and live interactive context injection.
+
+Read [**The Agent Manager Manifesto**](./MANIFESTO.md) to understand the design philosophy, hard-won lessons, 8 pillars, and long-term vision guiding this platform.
 
 ---
 
@@ -114,10 +118,11 @@ Visit **`http://localhost:8000`** in your browser to open the Agent Manager Cont
 
 ---
 
-## 🗺️ Cloud Hosting & Cross-Platform Roadmap
+## 🗺️ Documentation & Operations
 
-For cloud deployment plans (Render), database migration, and cross-platform mobile/web control via Expo (React Native), see:
-- 📖 [Hosting & Expo Architecture Plan](docs/hosting_and_expo_plan.md)
+- 📖 [The Agent Manager Manifesto](MANIFESTO.md) — 8 Pillars, engineering lessons, and architecture charter.
+- 📱 [Hosting, Expo & Feedback Flywheel Plan](docs/hosting_and_expo_plan.md) — Cloud deployment, Expo mobile client, and autonomous user feedback loop.
+- 🔄 [Agent Lifecycle & Quick-Resume Guide](docs/agent_lifecycle_and_resume_guide.md) — Turnkey instructions for pausing, stopping, and instantly resuming agents in a new chat.
 
 ---
 

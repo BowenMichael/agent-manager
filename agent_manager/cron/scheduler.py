@@ -137,8 +137,19 @@ class ProjectBacklogDispatcher:
                 promote_backlog_issue
             )
             result["in_review_local_agents"] = in_review_agents
+
+            # Periodically refresh code health and manifesto compliance telemetry
+            try:
+                from agent_manager.services.code_quality_service import generate_code_health_report
+                from agent_manager.services.manifesto_metrics import generate_manifesto_compliance_report
+                generate_code_health_report()
+                generate_manifesto_compliance_report()
+            except Exception as m_err:
+                logger.debug(f"[Cron Dispatcher] Metrics refresh error: {m_err}")
+
             self.dispatch_history.append({"timestamp": self.last_run_at, **result})
             return result
+
 
         except Exception as e:
             logger.error(f"[Cron Dispatcher] Unexpected error: {e}", exc_info=True)

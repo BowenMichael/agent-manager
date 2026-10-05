@@ -102,98 +102,106 @@ async def tail_agent_log(manager, session_id: str, clean_model: str = ""):
         logger.warning(f"No stream_log_file specified for session {session_id}")
         return
 
-    log_file = Path(log_path_str)
-    current_max_tokens = getattr(config, "MAX_SESSION_TOKENS", MAX_SESSION_TOKENS)
-    cwd_dir = session.worktree_path or getattr(config, "WORKSPACE_BASE", ".")
+    try:
+        log_file = Path(log_path_str)
+        current_max_tokens = getattr(config, "MAX_SESSION_TOKENS", MAX_SESSION_TOKENS)
+        cwd_dir = session.worktree_path or getattr(config, "WORKSPACE_BASE", ".")
 
-    # Wait up to 5 seconds for log file to be created by the spawned detached process
-    for _ in range(50):
-        if log_file.exists():
-            break
-        await asyncio.sleep(0.1)
+        # Wait up to 5 seconds for log file to be created by the spawned detached process
+        for _ in range(50):
+            if log_file.exists():
+                break
+            await asyncio.sleep(0.1)
 
-    if not log_file.exists():
-        logger.error(f"Stream log file {log_file} was not created for session {session_id}")
-        session.status = AgentStatus.FAILED
-        session.error_message = f"Stream log file {log_file} missing."
-        manager._save()
-        await manager.broadcast("session_updated", session.model_dump())
-        return
+        if not log_file.exists():
+            logger.error(f"Stream log file {log_file} was not created for session {session_id}")
+            session.status = AgentStatus.FAILED
+            session.error_message = f"Stream log file {log_file} missing."
+            manager._save()
+            await manager.broadcast("session_updated", session.model_dump())
+            return
 
-    with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-        # Resume from saved offset if reattaching
-        if session.stream_log_offset and session.stream_log_offset > 0:
-            try:
-                f.seek(session.stream_log_offset)
-            except Exception:
-                f.seek(0)
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+            # Resume from saved offset if reattaching
+            if session.stream_log_offset and session.stream_log_offset > 0:
+                try:
+                    f.seek(session.stream_log_offset)
+                except Exception:
+                    f.seek(0)
 
-        while True:
-            line_str = f.readline()
-            if not line_str:
-                # Check if the detached background process is still running
-                alive = is_process_alive(session.pid)
-                if alive:
-                    await asyncio.sleep(0.2)
+            while True:
+                line_str = f.readline()
+                if not line_str:
+                    # Check if the detached background process is still running
+                    alive = is_process_alive(session.pid)
+                    if alive:
+                        await asyncio.sleep(0.2)
+                        continue
+
+                    # Process is no longer running; drain any remaining unread content
+                    remaining = f.read()
+                    if remaining:
+                        for extra_line in remaining.splitlines():
+                            extra_clean = extra_line.strip()
+                            if extra_clean:
+                                interrupted = await _process_stream_line(
+                                    manager, session, session_id, extra_clean, cwd_dir, current_max_tokens
+                                )
+                                if interrupted:
+                                    return
+                        session.stream_log_offset = f.tell()
+                    break
+
+                # Update offset and persist
+                session.stream_log_offset = f.tell()
+                line_clean = line_str.strip()
+                if not line_clean:
                     continue
 
-                # Process is no longer running; drain any remaining unread content
-                remaining = f.read()
-                if remaining:
-                    for extra_line in remaining.splitlines():
-                        extra_clean = extra_line.strip()
-                        if extra_clean:
-                            interrupted = await _process_stream_line(
-                                manager, session, session_id, extra_clean, cwd_dir, current_max_tokens
-                            )
-                            if interrupted:
-                                return
-                    session.stream_log_offset = f.tell()
-                break
+                interrupted = await _process_stream_line(
+                    manager, session, session_id, line_clean, cwd_dir, current_max_tokens
+                )
+                if interrupted:
+                    return
 
-            # Update offset and persist
-            session.stream_log_offset = f.tell()
-            line_clean = line_str.strip()
-            if not line_clean:
-                continue
+        # Process exit handling
+        exit_code = 0
+        if session.exit_code_file and Path(session.exit_code_file).exists():
+            try:
+                content = Path(session.exit_code_file).read_text(encoding="utf-8").strip()
+                exit_code = int(content) if content else 0
+            except Exception:
+                exit_code = 0
 
-            interrupted = await _process_stream_line(
-                manager, session, session_id, line_clean, cwd_dir, current_max_tokens
+        if exit_code != 0:
+            await manager._append_message(
+                session_id,
+                MessageRole.SYSTEM,
+                f"Agent CLI exited with code {exit_code}"
             )
-            if interrupted:
-                return
 
-    # Process exit handling
-    exit_code = 0
-    if session.exit_code_file and Path(session.exit_code_file).exists():
         try:
-            content = Path(session.exit_code_file).read_text(encoding="utf-8").strip()
-            exit_code = int(content) if content else 0
+            from agent_manager.telemetry import record_token_usage
+            record_token_usage(
+                session_id=session_id,
+                repo=session.repo or "",
+                model=session.model or clean_model,
+                input_tokens=session.input_tokens,
+                output_tokens=session.output_tokens,
+                thinking_tokens=session.thinking_tokens,
+                cache_read_tokens=session.cache_read_tokens,
+                total_tokens=session.total_tokens
+            )
         except Exception:
-            exit_code = 0
+            pass
 
-    if exit_code != 0:
-        await manager._append_message(
-            session_id,
-            MessageRole.SYSTEM,
-            f"Agent CLI exited with code {exit_code}"
-        )
-
-    try:
-        from agent_manager.telemetry import record_token_usage
-        record_token_usage(
-            session_id=session_id,
-            repo=session.repo or "",
-            model=session.model or clean_model,
-            input_tokens=session.input_tokens,
-            output_tokens=session.output_tokens,
-            thinking_tokens=session.thinking_tokens,
-            cache_read_tokens=session.cache_read_tokens,
-            total_tokens=session.total_tokens
-        )
-    except Exception:
-        pass
-
-    await handle_post_process(manager, session, returncode=exit_code)
-    manager._save()
-    await manager.broadcast("session_updated", session.model_dump())
+        await handle_post_process(manager, session, returncode=exit_code)
+        manager._save()
+        await manager.broadcast("session_updated", session.model_dump())
+    except asyncio.CancelledError:
+        if is_process_alive(session.pid):
+            logger.info(f"Server restarting: Agent session {session_id} remains active in background service (PID: {session.pid}).")
+        elif session.status not in [AgentStatus.COMPLETED, AgentStatus.IN_REVIEW]:
+            session.status = AgentStatus.STOPPED
+        manager._save()
+        raise
