@@ -49,7 +49,7 @@ def evaluate_isolation(sessions: List[Any], repo_root: Optional[Path] = None) ->
     wt_dir = root / ".worktrees"
     stale_count = len([d for d in wt_dir.iterdir() if d.is_dir()]) if wt_dir.exists() else 0
 
-    has_auto_pr_cleaner = False
+    has_auto_pr_cleaner = (Path(__file__).resolve().parent / "worktree_cleaner.py").exists()
     has_multi_agent_rebase_resolver = False
 
     base = (isolated_count / len(sessions)) * 30.0
@@ -83,7 +83,7 @@ def evaluate_anti_monolith(target_dir: Optional[Path] = None, max_lines: int = 2
 
     loc_score = ((files_checked - len(monoliths)) / files_checked) * 30.0 if files_checked else 0.0
     has_semantic_memory = False  # Planned: Vector RAG across connected repos
-    has_long_file_filter = False  # Issue #39
+    has_long_file_filter = (Path(__file__).resolve().parent / "file_filter_service.py").exists()
 
     score = loc_score + 10.0 + (30.0 if has_semantic_memory else 0.0) + (30.0 if has_long_file_filter else 0.0)
     return {
