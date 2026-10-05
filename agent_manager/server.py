@@ -20,6 +20,7 @@ from agent_manager.api.routes.agents import router as agents_router
 from agent_manager.api.routes.github import router as github_routes_router
 from agent_manager.api.routes.projects import router as projects_router
 from agent_manager.api.routes.issues import router as issues_router
+from agent_manager.api.routes.feedback import router as feedback_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,6 +88,7 @@ app.include_router(agents_router)
 app.include_router(github_routes_router)
 app.include_router(projects_router)
 app.include_router(issues_router)
+app.include_router(feedback_router)
 
 
 # WebSocket for Real-Time Streaming
