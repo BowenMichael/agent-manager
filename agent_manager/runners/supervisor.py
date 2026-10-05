@@ -113,3 +113,10 @@ def verify_worktree_quality_gate(cwd_dir: str, branch_name: str) -> Dict[str, An
         "changelog_updated": has_changelog
     }
 
+
+def cleanup_merged_worktrees(repo_root: Optional[Path] = None, dry_run: bool = False) -> Dict[str, Any]:
+    """Runs autonomous worktree pruning for merged or stale branches."""
+    from agent_manager.services.worktree_cleaner import prune_stale_worktrees
+    return prune_stale_worktrees(repo_root=repo_root, dry_run=dry_run)
+
+
