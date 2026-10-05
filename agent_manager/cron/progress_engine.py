@@ -15,73 +15,7 @@ from agent_manager.services.manifesto_metrics import generate_manifesto_complian
 
 logger = logging.getLogger("agent_manager.cron.progress_engine")
 
-# Metric-to-Issue Priority Mapping
-METRIC_ISSUE_MAP = [
-    {
-        "id": "feedback_flywheel_api",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 102,
-        "title": "[FLYWHEEL]: Universal Feedback Ingestion API & Project Board Auto-Placement",
-        "condition": lambda cq, mf: not (Path(__file__).resolve().parents[2] / "agent_manager" / "api" / "routes" / "feedback.py").exists(),
-        "reason": "Universal Feedback Flywheel API is missing; user feedback cannot automatically seed the agent queue."
-    },
-    {
-        "id": "anti_monolith_refactor",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 100,
-        "title": "[REFACTOR]: Decompose Monolithic issues.py into Modular Route Controllers",
-        "condition": lambda cq, mf: cq["readability_and_simplicity"]["max_lines_in_file"] > 250,
-        "reason": "Source file exceeds 250 LOC limit (violates Section 5 Anti-Monolith)."
-    },
-    {
-        "id": "stale_worktree_cleanup",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 101,
-        "title": "[GIT]: Autonomous Stale Worktree Pruner & Merge Lifecycle Manager",
-        "condition": lambda cq, mf: not (Path(__file__).resolve().parents[2] / "agent_manager" / "services" / "worktree_cleaner.py").exists() and mf["pillars"]["II_isolation"].get("unmerged_worktrees_on_disk", 0) > 5,
-        "reason": "Over 5 unmerged/stale worktrees detected on disk (violates Sacred Isolation)."
-    },
-    {
-        "id": "long_file_filter",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 39,
-        "title": "[TASK]: avoid looking through long generated files",
-        "condition": lambda cq, mf: not mf["pillars"]["III_anti_monolith"].get("long_file_filter_active", False),
-        "reason": "Long generated file and binary circuit breaker is inactive."
-    },
-    {
-        "id": "database_migration",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 18,
-        "title": "[DATA]: Migrate Session Storage from Flat JSON File to PostgreSQL / SQLite",
-        "condition": lambda cq, mf: not mf["pillars"]["IV_process_decoupling"].get("relational_db_migrated", False),
-        "reason": "Sessions still stored in flat JSON; relational persistence required."
-    },
-    {
-        "id": "peer_reviewer_gateway",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 90,
-        "title": "[SWARM]: Automated Multi-Agent Peer Review & Security Audit Gateway",
-        "condition": lambda cq, mf: not mf["pillars"]["V_cognitive_pipeline"].get("peer_reviewer_agent_active", False),
-        "reason": "Adversarial PR Peer Reviewer persona is not yet configured."
-    },
-    {
-        "id": "finops_budgeting",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 93,
-        "title": "[FINOPS]: Per-Repository Dollar Budgeting & Dynamic Token Arbitrage",
-        "condition": lambda cq, mf: not mf["pillars"]["VI_swarm_concurrency"].get("per_repo_budget_caps", False),
-        "reason": "Per-repository dollar budgeting caps are unconfigured."
-    },
-    {
-        "id": "cost_estimator_and_replay",
-        "repo": "BowenMichael/agent-manager",
-        "issue_number": 95,
-        "title": "[TELEMETRY]: Real-Time USD Cost Estimator & Session Execution Replay",
-        "condition": lambda cq, mf: not mf["pillars"]["I_observability"].get("cost_tracking_active", False),
-        "reason": "Real-time USD cost tracking and execution replays are inactive."
-    }
-]
+from agent_manager.cron.progress_targets import METRIC_ISSUE_MAP
 
 
 
@@ -183,21 +117,48 @@ class MetricDrivenProgressEngine:
             self.history.append(result)
             return result
 
-        # 3. Promote & Dispatch
+        # 3. Promote & Actively Dispatch Development
         try:
-            from agent_manager.poller import LocalGitWatcher
-            watcher = LocalGitWatcher()
+            import asyncio
+            from agent_manager.runner import AgentRunnerManager
+            from agent_manager.models import SpawnRequest
+            from agent_manager.runners.supervisor import post_takeover_notice, sync_issue_board_status
+
+            runner = AgentRunnerManager()
             repo = next_target.get("repo", "BowenMichael/agent-manager")
 
-            # Transition card to in_progress and notify
-            await watcher.update_issue_status(repo, issue_num, "in_progress")
-            
+            # Transition card to in_progress
+            await sync_issue_board_status(repo, issue_num, "in_progress")
+
+            prompt = (
+                f"You have been assigned to GitHub Issue #{issue_num} in {repo}.\n\n"
+                f"**Title**: {title}\n\n"
+                f"**Deficiency / Target**: {reason}\n\n"
+                f"**Directives**:\n"
+                f"1. Work strictly in your isolated worktree.\n"
+                f"2. Follow AGENTS.md modular anti-monolith guidelines (< 250 LOC per file, <= 40 LOC per function).\n"
+                f"3. MANDATORY: Update CHANGELOG.md with your changes before opening a PR or completing.\n"
+                f"4. Run unit tests to verify before concluding."
+            )
+            spawn_req = SpawnRequest(
+                repo=repo,
+                issue_number=issue_num,
+                title=title,
+                prompt=prompt
+            )
+            session = await runner.spawn_agent(spawn_req)
+            if session.worktree_path and session.git_branch:
+                asyncio.create_task(post_takeover_notice(repo, issue_num, session.worktree_path, session.git_branch))
+
             result = {
                 "status": "TASK_DISPATCHED",
                 "timestamp": now_ts,
                 "target_issue": issue_num,
                 "target_title": title,
                 "reason": reason,
+                "session_id": session.session_id,
+                "worktree": session.worktree_path,
+                "branch": session.git_branch,
                 "action": "ADVANCE"
             }
             self.last_action = result
