@@ -162,7 +162,7 @@ def evaluate_ubiquitous_command() -> Dict[str, Any]:
     has_react = (root / "frontend" / "src" / "App.tsx").exists()
     has_voice = (root / "agent_manager" / "api" / "routes" / "issues.py").exists()
     has_expo_app = (root / "apps" / "mobile" / "app.json").exists() or (root / "mobile" / "package.json").exists()
-    has_push_notifications = False
+    has_push_notifications = (root / "agent_manager" / "services" / "push_notification_service.py").exists()
     has_workstation_bridge = (root / "agent_manager" / "bridge").exists()
 
     score = (10.0 if has_react else 0.0) + (10.0 if has_voice else 0.0)
@@ -200,6 +200,15 @@ def evaluate_accountability(repo_root: Optional[Path] = None) -> Dict[str, Any]:
     }
 
 
+def _determine_grade(overall: float) -> str:
+    """Assigns quality grade tier based on composite compliance score."""
+    if overall >= 90.0: return "ENTERPRISE_SWARM"
+    if overall >= 75.0: return "PRODUCTION_READY"
+    if overall >= 50.0: return "ACTIVE_EXPANSION"
+    if overall >= 30.0: return "EARLY_FOUNDATION"
+    return "GROUND_FLOOR"
+
+
 def generate_manifesto_compliance_report(repo_root: Optional[Path] = None) -> Dict[str, Any]:
     """Generates complete quantitative compliance evaluation across all Eight Pillars."""
     sessions = list(load_sessions().values())
@@ -219,12 +228,7 @@ def generate_manifesto_compliance_report(repo_root: Optional[Path] = None) -> Di
     weights = [0.15, 0.15, 0.15, 0.15, 0.10, 0.10, 0.10, 0.10]
     scores = [p["score"] for p in pillars.values()]
     overall = round(sum(w * s for w, s in zip(weights, scores)), 1)
-
-    if overall >= 90.0: grade = "ENTERPRISE_SWARM"
-    elif overall >= 75.0: grade = "PRODUCTION_READY"
-    elif overall >= 50.0: grade = "ACTIVE_EXPANSION"
-    elif overall >= 30.0: grade = "EARLY_FOUNDATION"
-    else: grade = "GROUND_FLOOR"
+    grade = _determine_grade(overall)
 
     report = {
         "manifesto_health_index": overall,

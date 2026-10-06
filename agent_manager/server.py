@@ -30,6 +30,7 @@ from agent_manager.api.routes.auth import router as auth_router
 from agent_manager.api.routes.webhooks_sentry import router as sentry_router
 from agent_manager.api.routes.dependencies import router as dependencies_router
 from agent_manager.api.routes.workstations import router as workstations_router
+from agent_manager.api.routes.notifications import router as notifications_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -133,6 +134,7 @@ app.include_router(auth_router)
 app.include_router(sentry_router)
 app.include_router(dependencies_router)
 app.include_router(workstations_router)
+app.include_router(notifications_router)
 
 
 # WebSocket for Real-Time Streaming
