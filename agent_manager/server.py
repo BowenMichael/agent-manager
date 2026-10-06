@@ -27,6 +27,7 @@ from agent_manager.api.routes.memory import router as memory_router
 from agent_manager.api.routes.finops import router as finops_router
 from agent_manager.api.routes.orchestration import router as orchestration_router
 from agent_manager.api.routes.auth import router as auth_router
+from agent_manager.api.routes.webhooks_sentry import router as sentry_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -127,6 +128,7 @@ app.include_router(memory_router)
 app.include_router(finops_router)
 app.include_router(orchestration_router)
 app.include_router(auth_router)
+app.include_router(sentry_router)
 
 
 # WebSocket for Real-Time Streaming
