@@ -21,9 +21,9 @@ def evaluate_observability(sessions: List[Any], telemetry: List[Dict[str, Any]])
     total = len(sessions)
     tracked_tokens = sum(1 for s in sessions if (getattr(s, "total_tokens", 0) or 0) > 0)
     
-    # Advanced Enterprise Criteria: Live USD Cost tracking, Session Video/DOM Replay
-    has_cost_tracking = False  # Planned: USD cost tracking & model rate cards
-    has_visual_replay = False  # Planned: WebP / DOM terminal execution replay
+    svc_dir = Path(__file__).resolve().parent
+    has_cost_tracking = (svc_dir / "cost_calculator_service.py").exists()
+    has_visual_replay = (svc_dir / "session_replay_service.py").exists()
 
     score = (
         (tracked_tokens / total) * 20.0 +
