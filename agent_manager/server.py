@@ -24,6 +24,7 @@ from agent_manager.api.routes.feedback import router as feedback_router
 from agent_manager.api.routes.telemetry_cost import router as telemetry_cost_router
 from agent_manager.api.routes.previews import router as previews_router
 from agent_manager.api.routes.memory import router as memory_router
+from agent_manager.api.routes.finops import router as finops_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -121,6 +122,7 @@ app.include_router(feedback_router)
 app.include_router(telemetry_cost_router)
 app.include_router(previews_router)
 app.include_router(memory_router)
+app.include_router(finops_router)
 
 
 # WebSocket for Real-Time Streaming
