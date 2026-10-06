@@ -54,5 +54,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/healthz || exit 1
 
-# Launch ASGI server using runtime port
-CMD ["sh", "-c", "uvicorn agent_manager.server:app --host 0.0.0.0 --port ${PORT}"]
+# Launch ASGI server using runtime port with proxy header trust for Render / reverse proxies
+CMD ["sh", "-c", "uvicorn agent_manager.server:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]
+

@@ -4,7 +4,7 @@ Adheres strictly to Anti-Monolith guidelines (< 250 LOC, functions <= 40 LOC).
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, AsyncMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI, Depends, Request
 
@@ -14,8 +14,8 @@ from agent_manager.auth.github_oauth import (
     is_user_authorized
 )
 from agent_manager.auth.config import is_auth_enabled
-from agent_manager.auth.middleware import get_current_user, require_auth, extract_token_from_request
-from agent_manager.api.routes.auth import router as auth_router
+from agent_manager.auth.middleware import get_current_user, require_auth
+from agent_manager.api.routes.auth import router as auth_router, get_callback_url
 
 
 class TestAuthService(unittest.TestCase):
@@ -61,10 +61,15 @@ class TestAuthEndpoints(unittest.TestCase):
     def setUp(self):
         self.app = FastAPI()
         self.app.include_router(auth_router)
+
+        @self.app.get("/api/protected-route")
+        def protected_endpoint(user: dict = Depends(require_auth)):
+            return {"secret": "data", "user": user["username"]}
+
         self.client = TestClient(self.app)
 
     def test_auth_me_unauthenticated(self):
-        """Verify /api/auth/me returns authenticated=False when unauthenticated."""
+        """Verify /api/auth/me returns authenticated=False when auth enabled."""
         with patch("agent_manager.auth.middleware.is_auth_enabled", return_value=True), \
              patch("agent_manager.api.routes.auth.is_auth_enabled", return_value=True):
             res = self.client.get("/api/auth/me")
@@ -91,6 +96,34 @@ class TestAuthEndpoints(unittest.TestCase):
         res = self.client.post("/api/auth/logout")
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.json().get("logged_out"))
+
+    def test_protected_route_blocks_unauthenticated_request(self):
+        """Verify require_auth raises 401 when unauthenticated and auth is enabled."""
+        with patch("agent_manager.auth.middleware.is_auth_enabled", return_value=True):
+            res = self.client.get("/api/protected-route")
+            self.assertEqual(res.status_code, 401)
+
+    def test_protected_route_allows_authenticated_request(self):
+        """Verify require_auth grants access when valid session token is provided."""
+        token = create_auth_token(username="BowenMichael")
+        with patch("agent_manager.auth.middleware.is_auth_enabled", return_value=True), \
+             patch("agent_manager.auth.middleware.is_user_authorized", return_value=True):
+            self.client.cookies.set("agent_manager_session", token)
+            res = self.client.get("/api/protected-route")
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.json()["user"], "BowenMichael")
+
+    @patch("agent_manager.api.routes.auth.exchange_code_for_token", new_callable=AsyncMock)
+    @patch("agent_manager.api.routes.auth.get_github_user_profile", new_callable=AsyncMock)
+    def test_github_callback_success(self, mock_profile, mock_exchange):
+        """Verify successful OAuth code exchange sets cookie and redirects to root."""
+        mock_exchange.return_value = "gho_mock_access_token"
+        mock_profile.return_value = {"login": "BowenMichael", "name": "Michael", "avatar_url": "https://avatar.png"}
+        with patch("agent_manager.api.routes.auth.is_user_authorized", return_value=True):
+            res = self.client.get("/api/auth/github/callback?code=valid_test_code", follow_redirects=False)
+            self.assertEqual(res.status_code, 302)
+            self.assertEqual(res.headers["location"], "/")
+            self.assertIn("agent_manager_session", res.headers.get("set-cookie", ""))
 
 
 if __name__ == "__main__":
