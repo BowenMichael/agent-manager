@@ -140,6 +140,14 @@ class TestRunnerLifecycleAndWatchdog(unittest.IsolatedAsyncioTestCase):
         self.assertIn("gemini-2.5-flash", script)
         self.assertIn("Solve bug #128", script)
 
+    def test_terminate_process_handles_already_dead_and_fallback(self):
+        """Verify terminate_process returns True if process is not alive after taskkill."""
+        with patch("agent_manager.runners.process_manager.is_process_alive", side_effect=[True, False]), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=128)
+            res = terminate_process(12345)
+            self.assertTrue(res)
+
 
 if __name__ == "__main__":
     unittest.main()
