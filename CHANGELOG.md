@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Frontend TypeScript Type Alignment & Production Build Invariant (`SessionReplayViewer.tsx`, `issue.ts`, `Dockerfile`)** — Fixed TypeScript compilation errors (`timerRef` type and exported `ProjectInfo`/`GlobalCounts` interfaces), ensuring `npm run build` cleanly outputs `frontend/dist` without build suppression flags during multi-stage Docker compilation.
 - **Docker Build Data Directory Checksum Resolution (`Dockerfile`)** — Removed `COPY data/ ./data/` build step that caused container compilation failures on Git clones where `data/` is properly `.gitignore`d, ensuring runtime directories are created safely via `mkdir -p /app/data`.
 
 ### Added

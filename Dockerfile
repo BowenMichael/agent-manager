@@ -8,7 +8,7 @@ COPY frontend/package*.json ./
 RUN npm ci --ignore-scripts || npm install
 
 COPY frontend/ ./
-RUN npm run build || true
+RUN npm run build
 
 # Stage 2: Production Python Runtime
 FROM python:3.11-slim AS runner

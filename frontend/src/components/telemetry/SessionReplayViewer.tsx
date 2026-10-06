@@ -35,7 +35,7 @@ export const SessionReplayViewer: React.FC<Props> = ({ replay, onClose }) => {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   const total = replay.frames.length;
   const currentFrame = replay.frames[currentStep] || replay.frames[0];
