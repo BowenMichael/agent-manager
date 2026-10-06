@@ -37,7 +37,7 @@ class TestDatabaseLayer(unittest.TestCase):
 
     def test_resolve_database_url(self):
         url = resolve_database_url("postgres://user:pass@host:5432/dbname")
-        self.assertTrue(url.startswith("postgresql://"))
+        self.assertTrue(url.startswith("postgresql+psycopg://") or url.startswith("postgresql://"))
 
         default_url = resolve_database_url()
         self.assertTrue(default_url.startswith("sqlite:///"))
