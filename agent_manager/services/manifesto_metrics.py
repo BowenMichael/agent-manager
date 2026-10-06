@@ -62,8 +62,10 @@ def evaluate_isolation(sessions: List[Any], repo_root: Optional[Path] = None) ->
         "score": round(score, 1),
         "isolated_sessions_ratio": round(isolated_count / len(sessions), 2),
         "unmerged_worktrees_on_disk": stale_count,
-        "auto_cleaner_active": has_auto_pr_cleaner
+        "auto_cleaner_active": has_auto_pr_cleaner,
+        "has_multi_agent_rebase_resolver": has_multi_agent_rebase_resolver,
     }
+
 
 
 def evaluate_anti_monolith(target_dir: Optional[Path] = None, max_lines: int = 250) -> Dict[str, Any]:
@@ -183,10 +185,11 @@ def evaluate_accountability(repo_root: Optional[Path] = None) -> Dict[str, Any]:
     root = repo_root or Path(__file__).resolve().parent.parent.parent
     has_changelog = (root / "CHANGELOG.md").exists()
     has_ci = (root / ".github" / "workflows" / "ci.yml").exists()
-    has_release_engine = False  # Planned: Automated SemVer release tagging
-    has_ephemeral_preview = False  # Planned: Auto deploy preview environment for PR
+    has_release_engine = (Path(__file__).resolve().parent.parent / "runners" / "release_manager.py").exists()
+    has_ephemeral_preview = (Path(__file__).resolve().parent / "preview_env_service.py").exists()
 
     score = (15.0 if has_changelog else 0.0) + (35.0 if has_ci else 0.0) + (25.0 if has_release_engine else 0.0) + (25.0 if has_ephemeral_preview else 0.0)
+
     return {
         "score": round(score, 1),
         "changelog_present": has_changelog,

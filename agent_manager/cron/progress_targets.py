@@ -97,5 +97,14 @@ METRIC_ISSUE_MAP: List[Dict[str, Any]] = [
         "title": "[GIT]: Autonomous Multi-Agent Git Rebase & Merge Conflict Auto-Resolver",
         "condition": lambda cq, mf: not mf["pillars"]["II_isolation"].get("has_multi_agent_rebase_resolver", False),
         "reason": "Autonomous git rebase conflict resolver is not yet active."
+    },
+    {
+        "id": "semver_release_engine",
+        "repo": "BowenMichael/agent-manager",
+        "issue_number": 98,
+        "title": "[RELEASE]: Autonomous SemVer Release Tagging & Package Publisher",
+        "condition": lambda cq, mf: not mf["pillars"]["VIII_accountability"].get("semver_release_engine", False),
+        "reason": "Automated SemVer release tagger and package publisher is not yet active."
     }
 ]
+
