@@ -51,6 +51,14 @@ METRIC_ISSUE_MAP: List[Dict[str, Any]] = [
         "reason": "Sessions still stored in flat JSON; relational persistence required."
     },
     {
+        "id": "docker_and_render_deployment",
+        "repo": "BowenMichael/agent-manager",
+        "issue_number": 16,
+        "title": "[INFRA]: Dockerize Agent Manager Backend and Add render.yaml Blueprint",
+        "condition": lambda cq, mf: not (REPO_ROOT / "Dockerfile").exists() or not (REPO_ROOT / "render.yaml").exists(),
+        "reason": "Docker multi-stage container and Render Infrastructure-as-Code blueprint are missing."
+    },
+    {
         "id": "peer_reviewer_gateway",
         "repo": "BowenMichael/agent-manager",
         "issue_number": 90,
