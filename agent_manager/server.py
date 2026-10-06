@@ -23,6 +23,7 @@ from agent_manager.api.routes.issues import router as issues_router
 from agent_manager.api.routes.feedback import router as feedback_router
 from agent_manager.api.routes.telemetry_cost import router as telemetry_cost_router
 from agent_manager.api.routes.previews import router as previews_router
+from agent_manager.api.routes.memory import router as memory_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -99,6 +100,7 @@ app.include_router(issues_router)
 app.include_router(feedback_router)
 app.include_router(telemetry_cost_router)
 app.include_router(previews_router)
+app.include_router(memory_router)
 
 
 # WebSocket for Real-Time Streaming

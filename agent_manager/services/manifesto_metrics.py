@@ -85,7 +85,7 @@ def evaluate_anti_monolith(target_dir: Optional[Path] = None, max_lines: int = 2
                     continue
 
     loc_score = ((files_checked - len(monoliths)) / files_checked) * 30.0 if files_checked else 0.0
-    has_semantic_memory = False  # Planned: Vector RAG across connected repos
+    has_semantic_memory = (Path(__file__).resolve().parent / "memory_service.py").exists()
     has_long_file_filter = (Path(__file__).resolve().parent / "file_filter_service.py").exists()
 
     score = loc_score + 10.0 + (30.0 if has_semantic_memory else 0.0) + (30.0 if has_long_file_filter else 0.0)

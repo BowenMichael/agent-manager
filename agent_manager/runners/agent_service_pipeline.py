@@ -84,7 +84,7 @@ async def run_pipeline_in_service(session, cwd_dir: str, issue_num: int, branch_
     save_single_session(session)
     _append_stream_event(log_file, f"🧠 **Pipeline Stage 2/3: High-Reasoning Planning** (`{plan_model}` / `{plan_effort}`)")
 
-    repo_context = get_repository_context(cwd_dir)
+    repo_context = get_repository_context(cwd_dir, query=initial_prompt)
     _, _, plan_cli_args = resolve_model_and_effort(plan_model, plan_effort)
     planning_prompt = (
         f"You are a principal software architect. Formulate the implementation plan for GitHub Issue #{issue_num} in {cwd_dir}.\n\n"
