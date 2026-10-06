@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Relational Database Persistence Layer (`agent_manager/db/`, `database.py`)** (#18) — Implemented high-concurrency relational persistence layer supporting SQLite with WAL mode (`PRAGMA journal_mode=WAL;`) for local development and PostgreSQL via `DATABASE_URL` with automatic schema creation, transactional context managers, and full Pydantic data mappers.
+- **Alembic Migration Infrastructure (`alembic/`, `alembic.ini`)** (#18) — Configured Alembic database migrations with auto-generation support, metadata binding to `agent_sessions` and `conversation_messages`, dynamic connection routing, and initial versioned migration schema.
+- **Zero-Downtime Legacy Data Auto-Migration (`migrate_json.py`)** (#18) — Added automatic migration on startup from legacy flat JSON (`data/sessions.json`) into the relational database, preserving all historical sessions, token telemetry, and conversation messages.
 - **Long Generated File & Binary Asset Filter Service (`file_filter_service.py`)** (#39) — Implemented file classification and circuit breaker preventing autonomous agents and context engines from scanning, reading, or dumping bloated lockfiles (package-lock, yarn, poetry), minified assets (*.min.js, *.min.css), source maps, and binary dumps. Integrated with Manifesto Pillar III metrics.
 - **Universal Feedback Flywheel API & Drop-in Client Widget (`feedback.py`, `<AgentFeedbackWidget />`)** (#102) — Added universal feedback ingestion API endpoint (`POST /api/feedback/submit`), backend formatting service (`feedback_service.py`), and embeddable React client widget (`AgentFeedbackWidget.tsx`). Captures route paths, viewport geometry, user-agent, and console stack traces, synthesizes structured GitHub issues, and auto-places them into Project Board column 'Ready for Agent'.
 - **Autonomous Stale Worktree Pruner & Merge Lifecycle Manager (`worktree_cleaner.py`)** (#101) — Added autonomous worktree lifecycle management service and supervisor integration (`cleanup_merged_worktrees`) that inspects local git worktrees, cross-references branches with merged status into `main`, protects running agent processes and active PIDs, and safely prunes merged worktrees and branches to maintain clean disk overhead.
@@ -38,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-Repository Parallel Backlog Dispatching** — Re-architected task dispatcher to group project items per repository, preventing single-repo blocking and enabling independent agent concurrency.
 
 ### Changed
+- **Centralized Storage Refactoring (`storage.py`)** (#18) — Refactored `storage.py` and `server.py` lifespan to delegate session persistence to the relational database while maintaining 100% backward-compatible REST API contracts for `/api/agents` and `/api/agents/{id}` with local file mirror fallback.
+- **Manifesto Metrics Worktree Resolution (`manifesto_metrics.py`)** (#18) — Hardened Pillar II worktree directory discovery to accurately resolve repository root when executed inside isolated `.worktrees/` development enclaves.
 - **In-Review Local Agent Status Exemption** — Refactored scheduler, task dispatcher, and runner evaluator so that agents in `🔍 In Review` do not count as active running agents against worker capacity limits.
 - **Immediate In-Progress Project Board Transition** — Agents taking over an issue immediately advance the Project Board card status to `⚡ In Progress` upon session initialization.
 

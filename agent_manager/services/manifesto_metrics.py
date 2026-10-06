@@ -46,8 +46,11 @@ def evaluate_isolation(sessions: List[Any], repo_root: Optional[Path] = None) ->
 
     isolated_count = sum(1 for s in sessions if ".worktrees" in (getattr(s, "worktree_path", "") or ""))
     root = repo_root or Path(__file__).resolve().parent.parent.parent
+    if ".worktrees" in str(root):
+        while root.name != "agent-manager" and root.parent != root:
+            root = root.parent
     wt_dir = root / ".worktrees"
-    stale_count = len([d for d in wt_dir.iterdir() if d.is_dir()]) if wt_dir.exists() else 0
+    stale_count = len([d for d in wt_dir.iterdir() if d.is_dir()]) if wt_dir.is_dir() else 0
 
     has_auto_pr_cleaner = (Path(__file__).resolve().parent / "worktree_cleaner.py").exists()
     has_multi_agent_rebase_resolver = False
