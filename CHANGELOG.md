@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **GitHub Actions CI/CD for Render & Expo EAS** — Added modular CI/CD workflows for backend unit tests with command log suppression on PRs (`backend-ci.yml`), frontend linting, type-checking, web export and Expo EAS Preview builds (`frontend-eas-ci.yml`), and automated Render webhook deployment triggers on push to `main` (`render-deploy.yml`) (#25).
 - **Production Deployment & Operations Guide** — Added `docs/deployment.md` covering Render cloud setup (FastAPI Web Service, Redis, PostgreSQL), environment variable secrets management, SSL/custom domains, WebSocket proxy handling, and cross-platform Expo EAS build & distribution walkthrough (#26).
 - **Autonomous Agent Execution Runner, Process Lifecycle & Terminal Orchestration (`process_manager.py`, `watchdog.py`, `terminal_launcher.py`)** (#128) — Hardened cross-platform process management, decomposed watchdog stall detection and idle timeout cleanup, improved Windows PowerShell console launcher with UTF-8 encoding and prompt safety, and added graceful interrupt recovery.
 - **Real-Time GitHub Issue & Project Board Synchronization Engine Reliability (`github_client.py`, `watcher.py`, `synchronizer.py`)** (#127) — Implemented exponential retry with jitter for GitHub GraphQL and REST API queries, rate-limit resilience, bidirectional state reconciliation between local persistence and GitHub Project Boards, and real-time WebSocket sync broadcasting (`board_status_sync`).
