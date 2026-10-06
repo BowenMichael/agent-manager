@@ -4,6 +4,7 @@ Handles GitHub OAuth login, callback token exchange, session queries, and logout
 Adheres strictly to Anti-Monolith guidelines (< 250 LOC, functions <= 40 LOC).
 """
 
+import os
 from typing import Optional
 from fastapi import APIRouter, Request, Response, status, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -12,8 +13,7 @@ from pydantic import BaseModel
 from agent_manager.auth.config import (
     COOKIE_NAME,
     is_auth_enabled,
-    GITHUB_CLIENT_ID,
-    get_allowed_github_users
+    GITHUB_CLIENT_ID
 )
 from agent_manager.auth.jwt_service import create_auth_token
 from agent_manager.auth.github_oauth import (
@@ -35,13 +35,25 @@ class AuthStatusResponse(BaseModel):
     name: Optional[str] = None
 
 
+def get_callback_url(request: Request) -> str:
+    """Resolves canonical OAuth callback URL respecting reverse proxy HTTPS headers and env vars."""
+    app_url = os.getenv("APP_URL") or os.getenv("RENDER_EXTERNAL_URL")
+    if app_url:
+        return f"{app_url.rstrip('/')}/api/auth/github/callback"
+    url = str(request.url_for("github_callback"))
+    proto = request.headers.get("x-forwarded-proto", "")
+    if proto == "https" and url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
+    return url
+
+
 @router.get("/me", response_model=AuthStatusResponse)
 def get_auth_status(request: Request):
     """Returns the current user's session status and profile."""
     enabled = is_auth_enabled()
     user = get_current_user(request)
     if not user or not user.get("username"):
-        return AuthStatusResponse(authenticated=False, auth_enabled=enabled)
+        return AuthStatusResponse(authenticated=not enabled, auth_enabled=enabled)
 
     return AuthStatusResponse(
         authenticated=True,
@@ -60,7 +72,7 @@ def github_login(request: Request):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="GitHub OAuth is not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET."
         )
-    redirect_uri = str(request.url_for("github_callback"))
+    redirect_uri = get_callback_url(request)
     oauth_url = get_github_oauth_url(redirect_uri)
     return RedirectResponse(url=oauth_url)
 
@@ -68,7 +80,7 @@ def github_login(request: Request):
 @router.get("/github/callback")
 async def github_callback(code: str, request: Request, response: Response):
     """Exchanges code for access token, fetches profile, and sets auth cookie."""
-    redirect_uri = str(request.url_for("github_callback"))
+    redirect_uri = get_callback_url(request)
     access_token = await exchange_code_for_token(code, redirect_uri)
     if not access_token:
         raise HTTPException(
@@ -96,12 +108,18 @@ async def github_callback(code: str, request: Request, response: Response):
         name=profile.get("name", username)
     )
 
+    is_https = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto") == "https"
+        or bool(os.getenv("RENDER_EXTERNAL_URL"))
+    )
+
     redirect = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
     redirect.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=True,
+        secure=is_https,
         samesite="lax",
         max_age=7 * 86400
     )

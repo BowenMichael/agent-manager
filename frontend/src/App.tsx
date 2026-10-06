@@ -1,4 +1,5 @@
-﻿import React, { useState } from 'react'
+import React, { useState } from 'react'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { useAgents } from './context/AgentContext'
 import { Header } from './components/layout/Header'
 import { Sidebar } from './components/layout/Sidebar'
@@ -7,11 +8,26 @@ import { DashboardOverview } from './components/dashboard/DashboardOverview'
 import { AgentControls } from './components/control/AgentControls'
 import { LaunchAgentModal } from './components/control/LaunchAgentModal'
 import { IssueCommandCenter } from './components/issues/IssueCommandCenter'
+import { LoginPage } from './components/auth/LoginPage'
 
-export const App: React.FC = () => {
+const WorkspaceContent: React.FC = () => {
   const { selectedAgent } = useAgents()
+  const { isAuthenticated, authEnabled, isLoading } = useAuth()
   const [isLaunchOpen, setIsLaunchOpen] = useState(false)
   const [activeView, setActiveView] = useState<'issues' | 'sessions'>('issues')
+
+  if (isLoading) {
+    return (
+      <div className="auth-loading-screen">
+        <div className="spinner-glow"></div>
+        <p className="loading-text">Verifying security credentials...</p>
+      </div>
+    )
+  }
+
+  if (authEnabled && !isAuthenticated) {
+    return <LoginPage />
+  }
 
   return (
     <div className="app-layout">
@@ -77,6 +93,14 @@ export const App: React.FC = () => {
 
       <LaunchAgentModal isOpen={isLaunchOpen} onClose={() => setIsLaunchOpen(false)} />
     </div>
+  )
+}
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <WorkspaceContent />
+    </AuthProvider>
   )
 }
 

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Production Authentication & Security Smoke Verification Suite (`tests/test_production_auth_smoke.py`, `tests/test_auth_service.py`)** — Added automated production smoke tests and expanded unit tests verifying live `/healthz`, `/api/auth/me`, `/api/auth/github/login` OAuth initiation, JWT signing, whitelist access gating, and 401 unauthorized rejections.
+- **Frontend Authentication Gateway & Glassmorphism Login Gate (`AuthContext.tsx`, `LoginPage.tsx`, `Header.tsx`, `App.tsx`)** — Added global `AuthContext` managing authentication state, premium Antigravity dark glassmorphism login gate for unauthenticated users, user profile pill in the header with GitHub avatar and sign-out controls, and local development fallback indicators.
+- **Reverse Proxy & Render Cloud URL Resolution (`agent_manager/api/routes/auth.py`, `Dockerfile`)** — Added dynamic OAuth callback URL detection supporting `RENDER_EXTERNAL_URL`, `APP_URL`, and `X-Forwarded-Proto` SSL termination headers, enabled `--proxy-headers` in Dockerfile uvicorn startup, and added adaptive HTTPS cookie security flags.
+
 ### Fixed
 - **PostgreSQL SQLAlchemy Driver Compatibility (`db/connection.py`, `requirements.txt`)** — Added `psycopg[binary]>=3.1.0` and normalized PostgreSQL connection strings to `postgresql+psycopg://` to ensure production Render database health checks resolve without missing driver errors.
 - **Frontend TypeScript Type Alignment & Production Build Invariant (`SessionReplayViewer.tsx`, `issue.ts`, `Dockerfile`)** — Fixed TypeScript compilation errors (`timerRef` type and exported `ProjectInfo`/`GlobalCounts` interfaces), ensuring `npm run build` cleanly outputs `frontend/dist` without build suppression flags during multi-stage Docker compilation.
