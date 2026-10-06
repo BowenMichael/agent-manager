@@ -133,19 +133,30 @@ async def run_independent_agent(session_id: str, is_continuation: bool = False, 
     exit_file.write_text(str(return_code), encoding="utf-8")
     logger.info(f"CLI execution finished with return code {return_code}")
 
-    # Conclude turn: verify changelog and update status
+    # Conclude turn: verify changelog, run peer review audit, and update status
     sessions = load_sessions()
     session = sessions.get(session_id)
     if session:
         changelog_ok = verify_changelog_update(cwd_dir, branch_name)
         if not changelog_ok:
             logger.warning(f"Agent {session_id} concluded without modifying CHANGELOG.md")
-        session.status = AgentStatus.IN_REVIEW
-        save_single_session(session)
-        try:
-            await sync_issue_board_status(repo, issue_num, "in_review")
-        except Exception as e:
-            logger.warning(f"Error syncing board to in_review: {e}")
+
+        from agent_manager.runners.reviewer import run_peer_reviewer_gateway
+        review_result = await run_peer_reviewer_gateway(session, cwd_dir, branch_name)
+
+        if review_result.get("passed"):
+            session.status = AgentStatus.IN_REVIEW
+            save_single_session(session)
+            try:
+                await sync_issue_board_status(repo, issue_num, "in_review")
+            except Exception as e:
+                logger.warning(f"Error syncing board to in_review: {e}")
+        else:
+            session.status = AgentStatus.FAILED
+            session.error_message = (
+                f"Peer Review Gateway Blocked: {len(review_result.get('critical_flaws', []))} critical issue(s)"
+            )
+            save_single_session(session)
 
     logger.info(f"Independent agent service for session {session_id} finished successfully.")
 
