@@ -145,7 +145,7 @@ def evaluate_swarm_concurrency(sessions: List[Any]) -> Dict[str, Any]:
     """Pillar VI: Swarm Concurrency, Per-Repo Budget Caps & Coordinated Multi-Repo Changes."""
     repos = {getattr(s, "repo", "") for s in sessions if getattr(s, "repo", "")}
     has_budget_caps_per_repo = (Path(__file__).resolve().parent / "finops_service.py").exists()
-    has_cross_repo_coordinator = False  # Planned: Multi-repo coordinated atomic tasks
+    has_cross_repo_coordinator = (Path(__file__).resolve().parent / "cross_repo_orchestrator.py").exists()
 
     score = (20.0 if len(repos) >= 3 else 10.0) + (40.0 if has_budget_caps_per_repo else 0.0) + (40.0 if has_cross_repo_coordinator else 0.0)
     return {
