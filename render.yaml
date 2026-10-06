@@ -25,8 +25,6 @@ services:
           property: connectionString
       - key: GITHUB_TOKEN
         sync: false
-      - key: GEMINI_API_KEY
-        sync: false
 
   # Managed Redis for Swarm Coordination & Webhooks
   - type: redis
