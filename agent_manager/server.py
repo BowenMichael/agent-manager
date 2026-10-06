@@ -86,6 +86,26 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": f"Internal Server Error: {str(exc)}", "error": str(exc)},
     )
 
+@app.get("/healthz", tags=["system"])
+def healthz_probe():
+    """Lightweight liveness and readiness probe for Docker and Render."""
+    db_status = "connected"
+    try:
+        from agent_manager.database import get_db_session
+        from sqlalchemy import text
+        with get_db_session() as db_session:
+            db_session.execute(text("SELECT 1"))
+    except Exception as e:
+        db_status = f"unhealthy: {e}"
+
+    is_healthy = "unhealthy" not in db_status
+    return {
+        "status": "healthy" if is_healthy else "degraded",
+        "service": "agent-manager",
+        "database": db_status,
+        "version": "1.0.0",
+    }
+
 
 # Include Sub-Routers
 app.include_router(webhooks_router)
