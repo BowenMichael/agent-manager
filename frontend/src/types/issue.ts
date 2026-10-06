@@ -1,4 +1,4 @@
-﻿export interface ActiveSessionSummary {
+export interface ActiveSessionSummary {
   session_id: string
   status: string
   model?: string
@@ -60,3 +60,6 @@ export interface IssuesResponse {
   }
   projects: ProjectSummary[]
 }
+
+export type ProjectInfo = ProjectSummary
+export type GlobalCounts = IssuesResponse['counts']
