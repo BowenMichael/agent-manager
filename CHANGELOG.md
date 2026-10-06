@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Docker Build Data Directory Checksum Resolution (`Dockerfile`)** — Removed `COPY data/ ./data/` build step that caused container compilation failures on Git clones where `data/` is properly `.gitignore`d, ensuring runtime directories are created safely via `mkdir -p /app/data`.
+
 ### Added
 - **Render Blueprint Credential Alignment & Template Update (`render.yaml`, `mcp_config.template.json`)** — Removed unnecessary `GEMINI_API_KEY` prompt from Render blueprint, aligning cloud deployment with Antigravity SDK/CLI native subscription authentication, and added Render MCP server definition to `mcp_config.template.json`.
 - **Render Free Tier Blueprint Optimization (`render.yaml`)** — Configured production infrastructure-as-code blueprint for Render's 100% free tier (`plan: free` across web service, PostgreSQL database, and Redis instance), removing persistent disk requirements in favor of managed PostgreSQL persistence, and validated blueprint structure with Render CLI.

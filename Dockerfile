@@ -32,7 +32,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend codebase and config
 COPY agent_manager/ ./agent_manager/
-COPY data/ ./data/
 COPY docs/ ./docs/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
