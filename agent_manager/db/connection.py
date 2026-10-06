@@ -27,9 +27,11 @@ def resolve_database_url(custom_url: Optional[str] = None) -> str:
         db_path = DATA_DIR / "agent_manager.db"
         return f"sqlite:///{db_path.as_posix()}"
 
-    # Normalize Render / Heroku postgres:// schema to standard postgresql://
+    # Normalize Render / Heroku postgres schemas to postgresql+psycopg://
     if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
+        url = url.replace("postgres://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
 
 
