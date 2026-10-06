@@ -34,6 +34,12 @@ runner = AgentRunnerManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: Initialize relational database & auto-migrate legacy data
+    try:
+        from agent_manager.database import init_db
+        init_db()
+    except Exception as e:
+        logger.warning(f"Failed to initialize database on startup: {e}")
     # Startup: Start local Git board watcher
     watcher.start()
     asyncio.create_task(runner.start_watchdog())
