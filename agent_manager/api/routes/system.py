@@ -25,6 +25,13 @@ async def get_manifesto_metrics():
     return generate_manifesto_compliance_report()
 
 
+@router.get("/telemetry/manifesto-history")
+async def get_manifesto_history():
+    """Returns persistent historical metric snapshots and trajectory trends over time."""
+    from agent_manager.services.metric_history_service import compute_metric_trends
+    return compute_metric_trends()
+
+
 @router.get("/telemetry/code-health")
 async def get_code_health():
     """Returns readability, simplicity, lines-of-code per file/function, and testability metrics."""

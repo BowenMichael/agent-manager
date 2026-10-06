@@ -222,7 +222,7 @@ def generate_manifesto_compliance_report(repo_root: Optional[Path] = None) -> Di
     elif overall >= 30.0: grade = "EARLY_FOUNDATION"
     else: grade = "GROUND_FLOOR"
 
-    return {
+    report = {
         "manifesto_health_index": overall,
         "grade": grade,
         "target_baseline": "Enterprise Multi-Repo Swarm Standard (~20%)",
@@ -233,3 +233,10 @@ def generate_manifesto_compliance_report(repo_root: Optional[Path] = None) -> Di
             "uncompleted_vision_gap": round(100.0 - overall, 1)
         }
     }
+    try:
+        from agent_manager.services.metric_history_service import record_metric_snapshot
+        record_metric_snapshot(report)
+    except Exception:
+        pass
+    return report
+
