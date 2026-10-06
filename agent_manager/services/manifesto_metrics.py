@@ -53,7 +53,7 @@ def evaluate_isolation(sessions: List[Any], repo_root: Optional[Path] = None) ->
     stale_count = len([d for d in wt_dir.iterdir() if d.is_dir()]) if wt_dir.is_dir() else 0
 
     has_auto_pr_cleaner = (Path(__file__).resolve().parent / "worktree_cleaner.py").exists()
-    has_multi_agent_rebase_resolver = False
+    has_multi_agent_rebase_resolver = (Path(__file__).resolve().parent.parent / "runners" / "rebase_supervisor.py").exists()
 
     base = (isolated_count / len(sessions)) * 30.0
     stale_penalty = min(stale_count * 1.5, 20.0)
