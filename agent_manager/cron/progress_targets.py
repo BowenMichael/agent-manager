@@ -65,5 +65,29 @@ METRIC_ISSUE_MAP: List[Dict[str, Any]] = [
         "title": "[TELEMETRY]: Real-Time USD Cost Estimator & Session Execution Replay",
         "condition": lambda cq, mf: not mf["pillars"]["I_observability"].get("cost_tracking_active", False),
         "reason": "Real-time USD cost tracking and execution replays are inactive."
+    },
+    {
+        "id": "ephemeral_preview_environments",
+        "repo": "BowenMichael/agent-manager",
+        "issue_number": 91,
+        "title": "[ENV]: Ephemeral Local Preview Environments & Live Tunnel Dispatch",
+        "condition": lambda cq, mf: not (REPO_ROOT / "agent_manager" / "services" / "preview_env_service.py").exists(),
+        "reason": "Ephemeral live preview environment dispatcher is not configured."
+    },
+    {
+        "id": "cross_repo_semantic_memory",
+        "repo": "BowenMichael/agent-manager",
+        "issue_number": 92,
+        "title": "[RAG]: Cross-Repository Semantic Code Intelligence & Vector Memory",
+        "condition": lambda cq, mf: not mf["pillars"]["III_anti_monolith"].get("semantic_cross_repo_memory", False),
+        "reason": "Semantic cross-repo vector memory is not yet indexed."
+    },
+    {
+        "id": "multi_agent_rebase_resolver",
+        "repo": "BowenMichael/agent-manager",
+        "issue_number": 96,
+        "title": "[GIT]: Autonomous Multi-Agent Git Rebase & Merge Conflict Auto-Resolver",
+        "condition": lambda cq, mf: not mf["pillars"]["II_isolation"].get("has_multi_agent_rebase_resolver", False),
+        "reason": "Autonomous git rebase conflict resolver is not yet active."
     }
 ]
