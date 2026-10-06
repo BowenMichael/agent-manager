@@ -13,6 +13,13 @@
       "env": {
         "VERCEL_API_TOKEN": "YOUR_VERCEL_TOKEN_HERE"
       }
+    },
+    "render": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@niyogi/render-mcp", "start"],
+      "env": {
+        "RENDER_API_KEY": "YOUR_RENDER_API_KEY_HERE"
+      }
     }
   }
 }
