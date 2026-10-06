@@ -184,7 +184,8 @@ def evaluate_accountability(repo_root: Optional[Path] = None) -> Dict[str, Any]:
     """Pillar VIII: Deterministic Accountability, Ephemeral Preview QA & Release Engine."""
     root = repo_root or Path(__file__).resolve().parent.parent.parent
     has_changelog = (root / "CHANGELOG.md").exists()
-    has_ci = (root / ".github" / "workflows" / "ci.yml").exists()
+    wf_dir = root / ".github" / "workflows"
+    has_ci = bool(wf_dir.exists() and list(wf_dir.glob("*.yml")))
     has_release_engine = (Path(__file__).resolve().parent.parent / "runners" / "release_manager.py").exists()
     has_ephemeral_preview = (Path(__file__).resolve().parent / "preview_env_service.py").exists()
 
