@@ -140,3 +140,29 @@ class SettingsUpdateRequest(BaseModel):
     pipeline_implementation_effort: Optional[str] = None
     guardrails_enabled: Optional[bool] = None
     auto_merge_enabled: Optional[bool] = None
+
+
+class CrossRepoTaskLink(BaseModel):
+    link_id: str
+    parent_repo: str
+    parent_issue_number: int
+    parent_pr_number: Optional[int] = None
+    child_repo: str
+    child_issue_number: Optional[int] = None
+    child_pr_number: Optional[int] = None
+    contract_path: Optional[str] = None
+    status: str = "PENDING"  # PENDING, SYNCING, VERIFIED, MERGED
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class OrchestrationPlan(BaseModel):
+    plan_id: str
+    title: str
+    initiator_repo: str
+    initiator_issue: int
+    contract_changes: List[str] = Field(default_factory=list)
+    dependent_repos: List[str] = Field(default_factory=list)
+    child_tasks: List[CrossRepoTaskLink] = Field(default_factory=list)
+    is_atomic: bool = True
+    status: str = "ACTIVE"
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
