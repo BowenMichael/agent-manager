@@ -150,15 +150,21 @@ def terminate_process(pid: Optional[int]) -> bool:
                 text=True,
                 check=False
             )
-            return res.returncode == 0
+            if res.returncode == 0:
+                return True
+            return not is_process_alive(pid)
         except Exception as e:
             logger.warning(f"Error terminating Windows PID {pid}: {e}")
-            return False
+            return not is_process_alive(pid)
     else:
         try:
             import signal
-            os.kill(pid, signal.SIGTERM)
+            try:
+                pgid = os.getpgid(pid)
+                os.killpg(pgid, signal.SIGTERM)
+            except Exception:
+                os.kill(pid, signal.SIGTERM)
             return True
         except OSError as e:
             logger.warning(f"Error terminating POSIX PID {pid}: {e}")
-            return False
+            return not is_process_alive(pid)
