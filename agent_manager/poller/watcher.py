@@ -19,7 +19,8 @@ from agent_manager.poller.github_client import GitHubBoardClient, execute_graphq
 from agent_manager.poller.synchronizer import (
     handle_closed_or_done,
     handle_active_session_comments,
-    handle_ready_status
+    handle_ready_status,
+    broadcast_board_sync
 )
 
 logger = logging.getLogger("agent_manager.poller.watcher")
@@ -128,7 +129,10 @@ class LocalGitWatcher:
                 item_id = next((self.item_id_map.get(k) for k in keys if self.item_id_map.get(k)), None)
                 if item_id:
                     break
-        return await self.update_item_status(item_id, status_key) if item_id else False
+        success = await self.update_item_status(item_id, status_key) if item_id else False
+        if success:
+            await broadcast_board_sync(self, issue_number, repo, status_key)
+        return success
 
     def _extract_item_status(self, item: dict) -> Optional[str]:
         """Extracts status option name from ProjectV2 item field values."""
@@ -161,6 +165,7 @@ class LocalGitWatcher:
 
         if active and active.status == AgentStatus.IN_REVIEW and status_name != STATUS_NAMES["in_review"]:
             await self.update_item_status(item["id"], "in_review")
+            await broadcast_board_sync(self, num, repo, "in_review")
 
         if status_name == STATUS_NAMES["ready"]:
             await handle_ready_status(self, active, item["id"], num, repo, content.get("title", ""), content.get("body") or "", content.get("comments", {}).get("nodes", []), issue_key)

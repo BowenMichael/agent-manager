@@ -72,12 +72,26 @@ class TestPollerReliability(unittest.IsolatedAsyncioTestCase):
         watcher = MagicMock()
         watcher.runner.broadcast = AsyncMock()
 
-        await broadcast_board_sync(watcher, issue_num=127, repo="BowenMichael/agent-manager", status_key="in_progress")
+        await broadcast_board_sync(watcher, issue_num=131, repo="BowenMichael/agent-manager", status_key="in_progress")
         watcher.runner.broadcast.assert_called_once()
         payload = watcher.runner.broadcast.call_args[0][0]
         self.assertEqual(payload["type"], "board_status_sync")
-        self.assertEqual(payload["data"]["issue_number"], 127)
+        self.assertEqual(payload["data"]["issue_number"], 131)
         self.assertEqual(payload["data"]["status"], "in_progress")
+
+    async def test_update_issue_status_broadcasts_on_success(self):
+        """Verify update_issue_status triggers broadcast on mutation success."""
+        watcher = LocalGitWatcher()
+        watcher.item_id_map["bowenmichael/agent-manager#131"] = "item_131"
+        watcher.update_item_status = AsyncMock(return_value=True)
+        watcher.runner.broadcast = AsyncMock()
+
+        res = await watcher.update_issue_status("BowenMichael/agent-manager", 131, "in_progress")
+        self.assertTrue(res)
+        watcher.runner.broadcast.assert_called_once()
+        payload = watcher.runner.broadcast.call_args[0][0]
+        self.assertEqual(payload["data"]["status"], "in_progress")
+        self.assertEqual(payload["data"]["issue_number"], 131)
 
 
 if __name__ == "__main__":
