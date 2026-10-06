@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-Repository Parallel Backlog Dispatching** — Re-architected task dispatcher to group project items per repository, preventing single-repo blocking and enabling independent agent concurrency.
 
 ### Changed
+- **Manifesto Metrics Modular CI/CD Workflow Discovery (`manifesto_metrics.py`)** — Enhanced Pillar VIII (Deterministic Accountability) evaluation to dynamically discover all GitHub Actions workflows (`.github/workflows/*.yml`), elevating Pillar VIII score to 100.0%.
 - **Stage 3 Execution Conclusion & Peer Review Gateway Integration (`agent_service.py`)** (#90) — Updated independent agent service execution lifecycle to invoke `run_peer_reviewer_gateway` upon Stage 3 completion, auditing diffs and enforcing security/anti-monolith checks before transitioning sessions to `IN_REVIEW`.
 - **Centralized Storage Refactoring (`storage.py`)** (#18) — Refactored `storage.py` and `server.py` lifespan to delegate session persistence to the relational database while maintaining 100% backward-compatible REST API contracts for `/api/agents` and `/api/agents/{id}` with local file mirror fallback.
 - **Manifesto Metrics Worktree Resolution (`manifesto_metrics.py`)** (#18) — Hardened Pillar II worktree directory discovery to accurately resolve repository root when executed inside isolated `.worktrees/` development enclaves.
