@@ -4,7 +4,7 @@ services:
     name: agent-manager-api
     env: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free
     region: oregon
     branch: main
     autoDeploy: true
@@ -27,10 +27,6 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
-    disk:
-      name: agent-manager-data
-      mountPath: /app/data
-      sizeGB: 10
 
   # Managed Redis for Swarm Coordination & Webhooks
   - type: redis
