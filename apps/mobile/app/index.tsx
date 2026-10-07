@@ -1,218 +1,154 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Pressable,
+  RefreshControl,
+  SafeAreaView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Theme } from '../constants/Theme';
-import { Config } from '../constants/Config';
+import { sessionStore, MobileAgentSession, StatusFilter } from '../store/sessionStore';
+import { agentSocket, ConnectionStatus } from '../services/socket';
 
-interface MockSession {
-  id: string;
-  issueNumber: number;
-  title: string;
-  status: 'running' | 'in_review' | 'completed' | 'paused';
-  model: string;
-  turns: number;
-  updatedAt: string;
-}
-
-const MOCK_SESSIONS: MockSession[] = [
-  {
-    id: 'sess-issue-20',
-    issueNumber: 20,
-    title: '[EXPO]: Scaffold Expo Application with TypeScript and Expo Router',
-    status: 'running',
-    model: 'Gemini 3.8 Flash',
-    turns: 4,
-    updatedAt: 'Just now',
-  },
-  {
-    id: 'sess-issue-17',
-    issueNumber: 17,
-    title: '[BACKEND]: Decouple Windows paths and cross-platform fallbacks',
-    status: 'completed',
-    model: 'Gemini 3.1 Pro',
-    turns: 9,
-    updatedAt: '2h ago',
-  },
-  {
-    id: 'sess-issue-65',
-    issueNumber: 65,
-    title: '[TELEMETRY]: Transform modal to full telemetry dashboard',
-    status: 'in_review',
-    model: 'Claude 3.7 Sonnet',
-    turns: 12,
-    updatedAt: 'Yesterday',
-  },
-];
-
-const getStatusBadgeStyle = (status: MockSession['status']) => {
-  switch (status) {
-    case 'running':
-      return { bg: 'rgba(56, 189, 248, 0.15)', text: Theme.primary };
-    case 'in_review':
-      return { bg: 'rgba(245, 158, 11, 0.15)', text: Theme.warning };
-    case 'completed':
-      return { bg: 'rgba(16, 185, 129, 0.15)', text: Theme.success };
-    case 'paused':
-      return { bg: 'rgba(239, 68, 68, 0.15)', text: Theme.danger };
-  }
-};
-
-export default function SessionsScreen() {
+export default function SessionsFeedScreen() {
   const router = useRouter();
-  const [sessions] = useState<MockSession[]>(MOCK_SESSIONS);
+  const [sessions, setSessions] = useState<MobileAgentSession[]>([]);
+  const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+  const [filter, setFilter] = useState<StatusFilter>('all');
+  const [refreshing, setRefreshing] = useState(false);
 
-  const renderSessionItem = ({ item }: { item: MockSession }) => {
-    const badge = getStatusBadgeStyle(item.status);
-    return (
-      <TouchableOpacity
-        style={styles.card}
-        activeOpacity={0.7}
-        onPress={() => router.push(`/session/${item.id}`)}
-      >
-        <View style={styles.cardHeader}>
-          <Text style={styles.issueNumber}>#{item.issueNumber}</Text>
-          <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-            <Text style={[styles.badgeText, { color: badge.text }]}>
-              {item.status.toUpperCase().replace('_', ' ')}
-            </Text>
-          </View>
-        </View>
+  useEffect(() => {
+    agentSocket.connect();
+    sessionStore.fetchSessions();
 
-        <Text style={styles.cardTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
+    const unsubscribe = sessionStore.subscribe(() => {
+      setSessions(sessionStore.getSessions());
+      setStatus(sessionStore.getConnectionStatus());
+      setFilter(sessionStore.getFilter());
+    });
 
-        <View style={styles.cardFooter}>
-          <Text style={styles.metaText}>{item.model}</Text>
-          <Text style={styles.metaSeparator}>•</Text>
-          <Text style={styles.metaText}>{item.turns} turns</Text>
-          <Text style={styles.metaSeparator}>•</Text>
-          <Text style={styles.metaText}>{item.updatedAt}</Text>
-        </View>
-      </TouchableOpacity>
-    );
+    return () => unsubscribe();
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await sessionStore.fetchSessions();
+    setRefreshing(false);
   };
 
+  const renderFilterButton = (key: StatusFilter, label: string) => (
+    <TouchableOpacity
+      key={key}
+      style={[styles.filterBtn, filter === key && styles.filterBtnActive]}
+      onPress={() => sessionStore.setFilter(key)}
+    >
+      <Text style={[styles.filterText, filter === key && styles.filterTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+
   return (
-    <View style={styles.container}>
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.headerTitle}>Active Agent Sessions</Text>
-          <Text style={styles.headerSubtitle}>
-            Connected to {Config.apiUrl}
+    <SafeAreaView style={styles.container}>
+      {status !== 'connected' && (
+        <View style={[styles.banner, status === 'reconnecting' ? styles.bannerWarn : styles.bannerError]}>
+          <Text style={styles.bannerText}>
+            {status === 'reconnecting' ? '⚡ Reconnecting to Agent Manager...' : '⚠️ Offline / Disconnected'}
           </Text>
         </View>
-        <Pressable
-          style={styles.settingsButton}
-          onPress={() => router.push('/settings')}
-        >
-          <Text style={styles.settingsButtonText}>Settings</Text>
-        </Pressable>
+      )}
+
+      <View style={styles.filterRow}>
+        {renderFilterButton('all', 'All')}
+        {renderFilterButton('active', 'Active')}
+        {renderFilterButton('in_review', 'In Review')}
+        {renderFilterButton('completed', 'Done')}
+        {renderFilterButton('failed', 'Failed')}
       </View>
 
       <FlatList
         data={sessions}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSessionItem}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
+        keyExtractor={(item) => item.session_id}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Theme.primary} />}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => router.push(`/session/${item.session_id}`)}
+          >
+            <View style={styles.cardHeader}>
+              <Text style={styles.repoText}>{item.repo}</Text>
+              <View style={[styles.badge, getBadgeStyle(item.status)]}>
+                <Text style={[styles.badgeText, { color: getBadgeTextColor(item.status) }]}>
+                  {item.status.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.activityText} numberOfLines={2}>
+              {item.current_activity || `Session ${item.session_id.substring(0, 8)}`}
+            </Text>
+
+            <View style={styles.cardFooter}>
+              <Text style={styles.metaText}>
+                {item.issue_number ? `Issue #${item.issue_number}` : 'Autonomous Flywheel'}
+              </Text>
+              {item.total_cost_usd !== undefined && (
+                <Text style={styles.costText}>${item.total_cost_usd.toFixed(4)}</Text>
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No sessions found matching filter</Text>
+          </View>
+        }
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
+function getBadgeStyle(status: string) {
+  switch (status) {
+    case 'running': return { backgroundColor: 'rgba(56, 189, 248, 0.15)' };
+    case 'in_review': return { backgroundColor: 'rgba(245, 158, 11, 0.15)' };
+    case 'completed': return { backgroundColor: 'rgba(34, 197, 94, 0.15)' };
+    case 'paused': return { backgroundColor: 'rgba(234, 179, 8, 0.15)' };
+    default: return { backgroundColor: 'rgba(239, 68, 68, 0.15)' };
+  }
+}
+
+function getBadgeTextColor(status: string) {
+  switch (status) {
+    case 'running': return Theme.primary;
+    case 'in_review': return Theme.warning;
+    case 'completed': return Theme.success;
+    case 'paused': return '#eab308';
+    default: return Theme.error;
+  }
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Theme.background,
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Theme.borderLight,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Theme.text,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: Theme.textMuted,
-    marginTop: 2,
-  },
-  settingsButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: Theme.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: Theme.border,
-  },
-  settingsButtonText: {
-    color: Theme.text,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  listContent: {
-    padding: 16,
-    gap: 12,
-  },
-  card: {
-    backgroundColor: Theme.card,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Theme.borderLight,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  issueNumber: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Theme.primary,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  badgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Theme.text,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  metaText: {
-    fontSize: 12,
-    color: Theme.textSecondary,
-  },
-  metaSeparator: {
-    marginHorizontal: 6,
-    color: Theme.textSecondary,
-  },
+  container: { flex: 1, backgroundColor: Theme.background },
+  banner: { paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center' },
+  bannerWarn: { backgroundColor: 'rgba(245, 158, 11, 0.2)' },
+  bannerError: { backgroundColor: 'rgba(239, 68, 68, 0.2)' },
+  bannerText: { fontSize: 12, fontWeight: '600', color: Theme.textMuted },
+  filterRow: { flexDirection: 'row', padding: 12, gap: 8 },
+  filterBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, backgroundColor: Theme.cardBg },
+  filterBtnActive: { backgroundColor: Theme.primary },
+  filterText: { fontSize: 13, color: Theme.textMuted },
+  filterTextActive: { color: '#000', fontWeight: 'bold' },
+  card: { backgroundColor: Theme.cardBg, marginHorizontal: 16, marginVertical: 6, padding: 16, borderRadius: 12 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  repoText: { fontSize: 14, fontWeight: 'bold', color: Theme.textPrimary },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  activityText: { fontSize: 13, color: Theme.textMuted, marginBottom: 12 },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  metaText: { fontSize: 12, color: Theme.textMuted },
+  costText: { fontSize: 12, fontWeight: '600', color: Theme.success },
+  emptyContainer: { padding: 40, alignItems: 'center' },
+  emptyText: { color: Theme.textMuted, fontSize: 14 },
 });
