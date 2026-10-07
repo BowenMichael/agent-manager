@@ -124,13 +124,10 @@ def evaluate_process_decoupling() -> Dict[str, Any]:
 
 def evaluate_cognitive_pipeline() -> Dict[str, Any]:
     """Pillar V: Multi-Model Division of Labor & Multi-Agent Peer Review."""
-    root = Path(__file__).resolve().parent.parent.parent
-    if ".worktrees" in str(root):
-        while root.name != "agent-manager" and root.parent != root:
-            root = root.parent
-    has_stages = (root / "agent_manager" / "services" / "interpretation.py").exists()
-    has_dynamic_handoff = False  # Planned: auto Stage 1 -> 2 -> 3 handoff
-    has_peer_reviewer_agent = (root / "agent_manager" / "runners" / "reviewer.py").exists()
+    svc_dir = Path(__file__).resolve().parent
+    has_stages = (svc_dir / "interpretation.py").exists()
+    has_dynamic_handoff = (svc_dir / "dynamic_handoff.py").exists()
+    has_peer_reviewer_agent = (svc_dir.parent / "runners" / "reviewer.py").exists()
 
     score = (15.0 if has_stages else 0.0) + (40.0 if has_dynamic_handoff else 0.0) + (45.0 if has_peer_reviewer_agent else 0.0)
     return {
