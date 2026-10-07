@@ -102,10 +102,20 @@ class SpawnRequest(BaseModel):
     workflow_pipeline_enabled: Optional[bool] = None
 
 class AddContextRequest(BaseModel):
-    context: str
+    context: Optional[str] = None
+    prompt: Optional[str] = None
+
+    @property
+    def text(self) -> str:
+        return (self.context or self.prompt or "").strip()
+
+class UpdateParametersRequest(BaseModel):
+    model: Optional[str] = None
+    effort: Optional[str] = None
 
 class StopAgentRequest(BaseModel):
     reason: Optional[str] = "Stopped by user via Agent Manager UI"
+
 
 class SimulateWebhookRequest(BaseModel):
     event_type: str = "issues"

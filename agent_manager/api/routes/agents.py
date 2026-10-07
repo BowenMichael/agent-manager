@@ -2,8 +2,9 @@ import sys
 import subprocess
 from fastapi import APIRouter, HTTPException
 from agent_manager.models import (
-    SpawnRequest, AddContextRequest, StopAgentRequest, AgentSessionInfo
+    SpawnRequest, AddContextRequest, StopAgentRequest, AgentSessionInfo, UpdateParametersRequest
 )
+
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.poller import LocalGitWatcher
 import agent_manager.config as config
@@ -119,6 +120,28 @@ async def compact_agent(session_id: str):
     return {"status": "ok", "message": f"Agent {session_id} chat compacted", "is_compacted": session.is_compacted}
 
 
+@router.post("/{session_id}/pause")
+async def pause_agent(session_id: str):
+    success = await runner.interrupt_agent(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    return {"status": "ok", "message": f"Agent {session_id} paused"}
+
+
+@router.post("/{session_id}/parameters")
+async def update_parameters(session_id: str, req: UpdateParametersRequest):
+    session = runner.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Agent session not found")
+    if req.model:
+        session.model = req.model
+    if req.effort:
+        session.effort = req.effort
+    runner._save()
+    await runner.broadcast("session_updated", session.model_dump())
+    return {"status": "ok", "message": "Parameters updated successfully"}
+
+
 @router.post("/{session_id}/stop")
 async def stop_agent(session_id: str, req: StopAgentRequest = StopAgentRequest()):
     success = await runner.stop_agent(session_id, req.reason or "Stopped via UI")
@@ -129,9 +152,11 @@ async def stop_agent(session_id: str, req: StopAgentRequest = StopAgentRequest()
 
 @router.post("/{session_id}/context")
 async def add_context(session_id: str, req: AddContextRequest):
-    if not req.context.strip():
+    content = req.text
+    if not content:
         raise HTTPException(status_code=400, detail="Context cannot be empty")
-    success = await runner.add_context(session_id, req.context)
+    success = await runner.add_context(session_id, content)
     if not success:
         raise HTTPException(status_code=404, detail="Agent session not found")
     return {"status": "ok", "message": "Context injected successfully"}
+
