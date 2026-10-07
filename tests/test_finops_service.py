@@ -4,6 +4,7 @@ Tests budget configs, spend evaluation, arbitrage downgrades, and API endpoints.
 Adheres strictly to Anti-Monolith guidelines (< 250 LOC, functions <= 40 LOC).
 """
 
+from datetime import datetime, timezone
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,7 +55,7 @@ class TestFinOpsService(unittest.TestCase):
         s1.thinking_tokens = 0
         s1.cache_read_tokens = 0
         s1.model = "gemini-2.5-pro"
-        s1.created_at = "2026-10-06T00:00:00Z"
+        s1.created_at = datetime.now(timezone.utc).isoformat()
 
         res = evaluate_repo_spend("test/repo", [s1])
         self.assertEqual(res["status"], "NORMAL")
@@ -71,7 +72,7 @@ class TestFinOpsService(unittest.TestCase):
         s_heavy.thinking_tokens = 0
         s_heavy.cache_read_tokens = 0
         s_heavy.model = "gemini-2.5-pro"
-        s_heavy.created_at = "2026-10-06T00:00:00Z"
+        s_heavy.created_at = datetime.now(timezone.utc).isoformat()
 
         res = evaluate_repo_spend("test/repo", [s_heavy])
         self.assertEqual(res["status"], "EXCEEDED")
@@ -86,7 +87,7 @@ class TestFinOpsService(unittest.TestCase):
         s_heavy.thinking_tokens = 0
         s_heavy.cache_read_tokens = 0
         s_heavy.model = "gemini-2.5-pro"
-        s_heavy.created_at = "2026-10-06T00:00:00Z"
+        s_heavy.created_at = datetime.now(timezone.utc).isoformat()
 
         model, effort, downgraded = apply_token_arbitrage("gemini-2.5-pro", "high", "test/repo", [s_heavy])
         self.assertTrue(downgraded)
