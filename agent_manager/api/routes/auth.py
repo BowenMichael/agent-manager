@@ -77,6 +77,25 @@ def github_login(request: Request):
     return RedirectResponse(url=oauth_url)
 
 
+def _create_auth_cookie_redirect(token: str, request: Request) -> RedirectResponse:
+    """Sets HTTP-only authentication cookie and creates redirect response."""
+    is_https = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto") == "https"
+        or bool(os.getenv("RENDER_EXTERNAL_URL"))
+    )
+    redirect = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+    redirect.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        max_age=7 * 86400
+    )
+    return redirect
+
+
 @router.get("/github/callback")
 async def github_callback(code: str, request: Request, response: Response):
     """Exchanges code for access token, fetches profile, and sets auth cookie."""
@@ -107,23 +126,7 @@ async def github_callback(code: str, request: Request, response: Response):
         avatar_url=profile.get("avatar_url", ""),
         name=profile.get("name", username)
     )
-
-    is_https = (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto") == "https"
-        or bool(os.getenv("RENDER_EXTERNAL_URL"))
-    )
-
-    redirect = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
-    redirect.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        secure=is_https,
-        samesite="lax",
-        max_age=7 * 86400
-    )
-    return redirect
+    return _create_auth_cookie_redirect(token, request)
 
 
 @router.post("/logout")

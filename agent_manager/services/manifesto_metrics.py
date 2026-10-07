@@ -105,7 +105,7 @@ def evaluate_process_decoupling() -> Dict[str, Any]:
     has_docker = (root / "Dockerfile").exists()
     has_render = (root / "render.yaml").exists()
     has_db_migration = (root / "agent_manager" / "database.py").exists() or "postgresql" in (root / "requirements.txt").read_text()
-    has_auth = (root / "agent_manager" / "api" / "auth.py").exists()
+    has_auth = (root / "agent_manager" / "auth").exists() or (root / "agent_manager" / "api" / "routes" / "auth.py").exists()
 
     score = 15.0  # Local detached daemon exists
     if has_docker: score += 20.0
