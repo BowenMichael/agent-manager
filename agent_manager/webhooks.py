@@ -79,11 +79,12 @@ async def process_github_event(event: str, payload: Dict[str, Any]) -> Dict[str,
         elif action == "closed":
             watcher = LocalGitWatcher()
             if issue_number:
-                await watcher.update_issue_status(repo, issue_number, "done")
+                await watcher.reconcile_event(repo, issue_number, "done", source="webhook_closed", body=body)
             for s in runner.list_sessions():
                 if s.repo == repo and s.issue_number == issue_number and s.status != AgentStatus.COMPLETED:
                     await runner.complete_agent(s.session_id, reason=f"Issue #{issue_number} closed on GitHub")
             return {"status": "ok", "action": "issue_closed", "issue_number": issue_number}
+
 
     # 2. Handling Project V2 Item Status Updates (Ready for Agent)
     elif event == "projects_v2_item":

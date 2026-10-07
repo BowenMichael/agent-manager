@@ -6,7 +6,7 @@ Adheres strictly to Anti-Monolith guidelines (< 250 LOC, functions <= 40 LOC).
 
 import asyncio
 import logging
-from typing import Optional, Set, Dict
+from typing import Optional, Set, Dict, Any
 
 from agent_manager.config import (
     GITHUB_PERSONAL_ACCESS_TOKEN, PROJECT_BOARD_ID, PROJECT_BOARD_IDS,
@@ -16,6 +16,7 @@ from agent_manager.models import AgentStatus
 from agent_manager.runner import AgentRunnerManager
 from agent_manager.poller.constants import STATUS_NAMES
 from agent_manager.poller.github_client import GitHubBoardClient, execute_graphql_with_retry
+from agent_manager.poller.reconciler import IssueSyncReconciler
 from agent_manager.poller.synchronizer import (
     handle_closed_or_done,
     handle_active_session_comments,
@@ -24,6 +25,7 @@ from agent_manager.poller.synchronizer import (
 )
 
 logger = logging.getLogger("agent_manager.poller.watcher")
+
 
 BOARD_QUERY = """
 query($projectId: ID!) {
@@ -80,6 +82,7 @@ class LocalGitWatcher:
     def _init_watcher(self):
         self.runner = AgentRunnerManager()
         self.client = GitHubBoardClient()
+        self.reconciler = IssueSyncReconciler()
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self.active_issues: Set[str] = set()
@@ -133,6 +136,11 @@ class LocalGitWatcher:
         if success:
             await broadcast_board_sync(self, issue_number, repo, status_key)
         return success
+
+    async def reconcile_event(self, repo: str, issue_number: int, status_key: str, source: str = "webhook", body: Optional[str] = None) -> Dict[str, Any]:
+        """Reconciles incoming sync event using debounce and state transition protection."""
+        return await self.reconciler.reconcile_issue_event(self, repo, issue_number, status_key, source, body)
+
 
     def _extract_item_status(self, item: dict) -> Optional[str]:
         """Extracts status option name from ProjectV2 item field values."""
