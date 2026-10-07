@@ -13,6 +13,7 @@ import { sessionStore } from '../../store/sessionStore';
 import { ThinkingAccordion } from '../../components/ThinkingAccordion';
 import { ToolCallCard } from '../../components/ToolCallCard';
 import { TokenBudgetBar } from '../../components/TokenBudgetBar';
+import { SessionControlBar } from '../../components/SessionControlBar';
 
 interface TranscriptEntry {
   id: string;
@@ -38,6 +39,14 @@ export default function SessionDetailScreen() {
     { id: '3', role: 'tool', toolName: 'grep_search', toolArgs: { Query: 'WebSocket', SearchPath: 'apps/mobile' }, toolOutput: 'Match found in apps/mobile/services/socket.ts' },
     { id: '4', role: 'agent', thinking: 'Component built successfully. Executing test suites.', content: 'Running test verification with log suppression.' },
   ]);
+
+  const handleMessageSent = (text: string) => {
+    setEntries((prev) => [...prev, { id: Date.now().toString(), role: 'user', content: text }]);
+  };
+
+  const handleActionTriggered = (action: string) => {
+    setEntries((prev) => [...prev, { id: Date.now().toString(), role: 'system', content: `Action executed: ${action.toUpperCase()}` }]);
+  };
 
   useEffect(() => {
     if (autoScroll && scrollViewRef.current) {
@@ -87,7 +96,7 @@ export default function SessionDetailScreen() {
             )}
 
             {entry.content && (
-              <View style={[styles.bubble, entry.role === 'user' ? styles.userBubble : styles.agentBubble]}>
+              <View style={[styles.bubble, entry.role === 'user' ? styles.userBubble : entry.role === 'system' ? styles.systemBubble : styles.agentBubble]}>
                 <Text style={styles.roleLabel}>{entry.role.toUpperCase()}</Text>
                 <Text style={styles.messageText}>{entry.content}</Text>
               </View>
@@ -95,9 +104,17 @@ export default function SessionDetailScreen() {
           </View>
         ))}
       </ScrollView>
+
+      <SessionControlBar
+        sessionId={id || ''}
+        status={session?.status}
+        onMessageSent={handleMessageSent}
+        onActionTriggered={handleActionTriggered}
+      />
     </SafeAreaView>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Theme.background },
@@ -121,6 +138,8 @@ const styles = StyleSheet.create({
   bubble: { padding: 12, borderRadius: 8, marginVertical: 2 },
   userBubble: { backgroundColor: '#1e293b', alignSelf: 'flex-end', maxWidth: '85%' },
   agentBubble: { backgroundColor: '#161b22', alignSelf: 'flex-start', maxWidth: '95%' },
+  systemBubble: { backgroundColor: '#33415550', alignSelf: 'center', maxWidth: '90%', borderWidth: 1, borderColor: '#475569' },
   roleLabel: { fontSize: 10, fontWeight: '700', color: Theme.textMuted, marginBottom: 4 },
   messageText: { fontSize: 13, color: Theme.textPrimary, lineHeight: 18 },
 });
+
